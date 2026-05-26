@@ -1,0 +1,1 @@
+Upload de map zuip-o-poly-github-upload uit deze map naar de hoofdpagina van je GitHub repo. Klik daarna Commit changes. Deze update haalt de popup na gooien weg en zet de dobbelsteen goed terug met startbeeld 3.
