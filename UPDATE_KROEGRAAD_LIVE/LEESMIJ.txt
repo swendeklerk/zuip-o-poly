@@ -1,0 +1,1 @@
+Upload deze bestanden naar GitHub in de map zuip-o-poly-github-upload. index.html vervangt de bestaande index.html. De twee bestanden in src gaan in zuip-o-poly-github-upload/src.
