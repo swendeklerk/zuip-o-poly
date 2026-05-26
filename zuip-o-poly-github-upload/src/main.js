@@ -261,16 +261,33 @@ function renderTeamRunning(team, teamState, state) {
       ${logoMarkup(true)}
       ${teamCard(team, teamState)}
       ${renderBoardShortcut()}
-      <section class="timer-strip">
-        <span>Normale dobbelbeurten</span>
-        <strong>${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns}</strong>
-      </section>
+      ${renderTurnStrip(teamState)}
       ${state.paused ? renderPauseNotice() : ""}
-      ${renderMoveFlash(teamState)}
       ${renderActivePlayCard(teamState, team.id, currentTile)}
       ${renderDemoTools(team, teamState)}
       ${renderTeamTabs()}
-      ${renderTeamPopup(teamState, team.id)}
+    </section>
+  `;
+}
+
+function renderTurnStrip(teamState) {
+  const lastRoll = teamState.lastRoll ?? teamState.lastMove?.roll ?? null;
+  return `
+    <section class="timer-strip turn-strip">
+      <div>
+        <span>Normale dobbelbeurten</span>
+        <strong>${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns}</strong>
+      </div>
+      ${
+        lastRoll
+          ? `
+            <div class="last-roll-chip" aria-label="Laatste worp ${lastRoll}">
+              <span>Worp</span>
+              <strong class="last-roll-value">${lastRoll}</strong>
+            </div>
+          `
+          : ""
+      }
     </section>
   `;
 }
@@ -372,10 +389,7 @@ function renderTeamBoard(team, teamState, state) {
   app.innerHTML = `
     <section class="screen">
       ${logoMarkup(true)}
-      <section class="timer-strip">
-        <span>Normale dobbelbeurten</span>
-        <strong>${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns}</strong>
-      </section>
+      ${renderTurnStrip(teamState)}
       ${teamCard(team, teamState)}
       <section class="panel board-panel" style="--team-accent:${team.accent}">
         <div class="board-header">
@@ -522,7 +536,7 @@ function renderDicePanel(teamState, teamId) {
     return "";
   }
 
-  const face = teamState.lastRoll ?? 5;
+  const face = teamState.lastRoll ?? 3;
   return `
     <section class="panel dice-panel">
       <p class="eyebrow">${teamState.status === TEAM_STATUS.APPROVED ? "Goedgekeurd" : "Mag gooien"}</p>
@@ -634,20 +648,46 @@ function renderKroegraadRunning(session, state, displayName) {
       const bNeedsReview = b.teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
       return Number(bNeedsReview) - Number(aNeedsReview);
     });
+  const reviewCount = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD).length;
+  const busyCount = assigned.filter(({ teamState }) =>
+    [TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.REJECTED].includes(teamState.status)
+  ).length;
+  const finishedCount = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.FINISHED).length;
 
   app.innerHTML = `
     <section class="screen council-screen">
       ${logoMarkup(true)}
-      <div class="panel">
-        <p class="eyebrow">Ingelogd als ${displayName}</p>
-        <h2>Kroegraad</h2>
-        <p class="helper">Spelstatus: <strong class="${state.paused ? "missing" : "ok"}">${state.paused ? "Gepauzeerd" : "Actief"}</strong></p>
-        <section class="timer-strip inline">
-          <span>Spel</span>
-          <strong>25 beurten p/team</strong>
-        </section>
-        ${button(state.paused ? "Spel hervatten" : "Spel pauzeren", "ghost", 'data-action="toggle-pause"')}
-        ${button("Uitloggen", "ghost", 'data-action="logout"')}
+      <div class="panel council-command">
+        <div class="council-command-top">
+          <div>
+            <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
+            <h2>${displayName}</h2>
+          </div>
+          <strong class="status-badge ${state.paused ? "is-paused" : "is-live"}">${state.paused ? "Gepauzeerd" : "Actief"}</strong>
+        </div>
+        <div class="council-metrics" aria-label="Kroegraad overzicht">
+          <div class="metric-card is-review">
+            <span>Te keuren</span>
+            <strong>${reviewCount}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Bezig</span>
+            <strong>${busyCount}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Klaar</span>
+            <strong>${finishedCount}</strong>
+          </div>
+        </div>
+        ${
+          reviewCount
+            ? `<div class="council-alert">Er ${reviewCount === 1 ? "staat" : "staan"} ${reviewCount} ${reviewCount === 1 ? "team" : "teams"} klaar voor keuring.</div>`
+            : `<div class="council-empty-review">Geen open keuringen. Teams die bezig zijn komen vanzelf bovenaan zodra bewijs klaarstaat.</div>`
+        }
+        <div class="council-actions">
+          ${button(state.paused ? "Spel hervatten" : "Spel pauzeren", "ghost", 'data-action="toggle-pause"')}
+          ${button("Uitloggen", "ghost small", 'data-action="logout"')}
+        </div>
       </div>
       <section class="team-list">
         ${assigned.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState)).join("")}
@@ -660,18 +700,27 @@ function renderKroegraadRunning(session, state, displayName) {
 function renderCouncilTeamCard(team, teamState) {
   const needsReview = teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
   const isBusy = teamState.status === TEAM_STATUS.TASK_ACTIVE || teamState.status === TEAM_STATUS.REJECTED;
+  const isFinished = teamState.status === TEAM_STATUS.FINISHED;
+  const statusClass = needsReview
+    ? "is-review"
+    : isBusy
+      ? "is-busy"
+      : isFinished
+        ? "is-finished"
+        : "is-neutral";
   const waitingText = teamState.status === TEAM_STATUS.REJECTED
     ? "Team moet opnieuw bewijs sturen."
     : "Team is bezig met opdracht. Wachten op bewijs.";
 
   return `
-    <article class="team-card council-card ${needsReview ? "needs-review" : ""}" style="--team-accent:${team.accent}">
+    <article class="team-card council-card ${needsReview ? "needs-review" : ""}" style="--team-accent:${team.accent}" data-status="${teamState.status}">
       <div class="team-card-top">
         ${teamBadge(team)}
         <div>
           <h2>${team.name}</h2>
-          <p>${needsReview ? "TE KEUREN" : teamState.status}</p>
+          <p class="council-team-meta">Beurt ${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns}</p>
         </div>
+        <strong class="status-badge ${statusClass}">${needsReview ? "TE KEUREN" : teamState.status}</strong>
         <details class="team-menu">
           <summary aria-label="Team menu">⋯</summary>
           <button data-action="release-session" data-team-id="${team.id}" type="button">Sessie vrijgeven</button>
@@ -679,12 +728,13 @@ function renderCouncilTeamCard(team, teamState) {
       </div>
       ${
         isBusy
-          ? `<p class="helper council-status">${waitingText}</p>`
+          ? `<p class="council-status">${waitingText}</p>`
           : ""
       }
       ${
         needsReview && teamState.currentTask
           ? `
+            <p class="council-status is-hot">Bewijs staat in WhatsApp. Controleer de groepsapp en keur daarna hier.</p>
             <article class="task-card review-task">
               <h3>${teamState.currentTask.title}</h3>
               <p>${teamState.currentTask.body}</p>
