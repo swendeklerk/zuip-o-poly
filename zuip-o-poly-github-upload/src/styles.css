@@ -1932,39 +1932,31 @@ body {
 }
 
 .board-shortcut {
-  display: grid;
-  grid-template-columns: 32px 1fr auto;
-  gap: 12px;
-  align-items: center;
-  min-height: 48px;
-  margin-top: -10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-top: 0;
-  border-radius: 0 0 6px 6px;
-  padding: 0 14px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015)),
-    rgba(6, 6, 7, 0.98);
-  color: var(--gold);
-  text-align: left;
-  text-transform: uppercase;
+  margin-top: -4px;
 }
 
 .board-shortcut strong {
   font-size: 0.82rem;
 }
 
+.board-nav-button,
 .board-back-button {
   width: 100%;
   min-height: 46px;
   border: 1px solid rgba(244, 191, 69, 0.26);
   border-radius: 7px;
+  padding: 0 14px;
   background:
     linear-gradient(90deg, rgba(244, 191, 69, 0.12), transparent 64%),
     rgba(0, 0, 0, 0.3);
   color: #ffe6a3;
   font-weight: 950;
+  text-align: center;
   text-transform: uppercase;
+}
+
+.board-nav-button:active {
+  transform: translateY(1px);
 }
 
 .shortcut-icon {

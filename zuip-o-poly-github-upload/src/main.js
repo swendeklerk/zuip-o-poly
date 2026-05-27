@@ -148,11 +148,7 @@ function teamCard(team, teamState, extra = "") {
 
 function renderBoardShortcut() {
   return `
-    <button class="board-shortcut" data-action="tab-board">
-      <span class="shortcut-icon" aria-hidden="true"></span>
-      <strong>Bekijk bord</strong>
-      <span class="shortcut-arrow" aria-hidden="true">›</span>
-    </button>
+    <button class="board-shortcut board-nav-button" data-action="tab-board" type="button">Bekijk bord</button>
   `;
 }
 
@@ -429,7 +425,7 @@ function renderTeamBoard(team, teamState, state) {
       ${logoMarkup(true)}
       ${renderTurnStrip(teamState)}
       ${teamCard(team, teamState)}
-      <button class="board-back-button" data-action="tab-play" type="button">Terug naar spelen</button>
+      <button class="board-back-button board-nav-button" data-action="tab-play" type="button">Terug naar spelen</button>
       <section class="panel board-panel" style="--team-accent:${team.accent}">
         <div class="board-header">
           <div>
