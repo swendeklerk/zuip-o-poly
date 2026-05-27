@@ -429,6 +429,7 @@ function renderTeamBoard(team, teamState, state) {
       ${logoMarkup(true)}
       ${renderTurnStrip(teamState)}
       ${teamCard(team, teamState)}
+      <button class="board-back-button" data-action="tab-play" type="button">Terug naar spelen</button>
       <section class="panel board-panel" style="--team-accent:${team.accent}">
         <div class="board-header">
           <div>

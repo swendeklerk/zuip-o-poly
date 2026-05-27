@@ -1954,6 +1954,19 @@ body {
   font-size: 0.82rem;
 }
 
+.board-back-button {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid rgba(244, 191, 69, 0.26);
+  border-radius: 7px;
+  background:
+    linear-gradient(90deg, rgba(244, 191, 69, 0.12), transparent 64%),
+    rgba(0, 0, 0, 0.3);
+  color: #ffe6a3;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .shortcut-icon {
   width: 18px;
   height: 18px;
