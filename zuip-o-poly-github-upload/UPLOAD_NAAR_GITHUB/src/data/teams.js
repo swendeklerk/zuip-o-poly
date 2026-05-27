@@ -1,0 +1,62 @@
+export const TEAMS = [
+  {
+    id: "team_bruine_kroeg",
+    name: "Bruine Kroeg",
+    players: ["Swen", "Jilke", "Bart", "Fleur", "Eva"],
+    colorName: "Bruin",
+    accent: "#8b5a2b",
+    code: "BRUINEKROEG",
+    kroegraadId: "LARS"
+  },
+  {
+    id: "team_zwarte_pint",
+    name: "Zwarte Pint",
+    players: ["Lars", "Iris", "Rick", "Sophie"],
+    colorName: "Zwart",
+    accent: "#f5f5f5",
+    code: "ZWARTEPINT",
+    kroegraadId: "SWEN"
+  },
+  {
+    id: "team_witte_batavus",
+    name: "Witte Batavus",
+    players: ["Bryan", "Celeste", "Thijs", "Jelle"],
+    colorName: "Wit",
+    accent: "#e8edf3",
+    code: "WITTEBATAVUS",
+    kroegraadId: "LARS"
+  }
+];
+
+export const KROEGRAAD_USERS = [
+  {
+    id: "SWEN",
+    displayName: "Swen",
+    loginName: "SWEN",
+    code: "0805"
+  },
+  {
+    id: "LARS",
+    displayName: "Lars",
+    loginName: "LARS",
+    code: "0311"
+  }
+];
+
+export function findTeamByCode(code) {
+  return TEAMS.find((team) => team.code === code);
+}
+
+export function findTeamById(teamId) {
+  return TEAMS.find((team) => team.id === teamId);
+}
+
+export function findKroegraad(loginName, code) {
+  return KROEGRAAD_USERS.find(
+    (user) => user.loginName === loginName && user.code === code
+  );
+}
+
+export function teamsForKroegraad(kroegraadId) {
+  return TEAMS.filter((team) => team.kroegraadId === kroegraadId);
+}

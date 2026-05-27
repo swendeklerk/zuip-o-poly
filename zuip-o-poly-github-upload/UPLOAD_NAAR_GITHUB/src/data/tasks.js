@@ -1,11 +1,7 @@
 const FIXED_TASKS_BY_TILE_ID = {
   5: "Het team neemt een grote fles ICE. Bewijs via WhatsApp. Na goedkeuring mag het team verder.",
-  11: "Jullie zijn op bezoek in de cel. Geen paniek, jullie zitten nog niet vast. Maak een foto of korte video waarop jullie zo overtuigend mogelijk doen alsof een teamlid net is opgesloten en de rest op bezoek komt. Bewijs via WhatsApp. Na goedkeuring mag het team opnieuw gooien.",
   13: "Jullie hebben niet genoeg energie. Koop voor ieder actief teamlid één Red Bull en shotgun deze. Bewijs via WhatsApp.",
-  16: "Wisselstation: kies later een ander team om mee te wisselen. De volledige keuzeflow bouwen we in de volgende laag. Voor nu: stuur bewijs via WhatsApp en wacht op de Kroegraad.",
   29: "Koop een flesje water en gooi deze volledig leeg over één teamgenoot. Bewijs via WhatsApp.",
-  31: "Ga direct naar de echte cel. Jullie worden naar vakje 11 gezet en moeten eerst wachten. Daarna verschijnt de Keizer Karelplein-opdracht.",
-  36: "Wisselstation: kies later een ander team om mee te wisselen. De volledige keuzeflow bouwen we in de volgende laag. Voor nu: stuur bewijs via WhatsApp en wacht op de Kroegraad.",
   39: "Fotografeer 5 witte fietsen. De fietsen moeten duidelijk herkenbaar zijn. Bewijs via WhatsApp."
 };
 

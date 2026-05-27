@@ -1,100 +1,142 @@
-export const CHANCE_CARDS = [
+const CHANCE_CARDS = [
   {
-    id: "chance-chaos-toast",
-    title: "Chaos Toast",
-    body: "Maak een korte proostvideo waarin ieder actief teamlid een andere toast uitbrengt. Bewijs via WhatsApp.",
+    id: "chance-stijn-kijkt-mee",
+    title: "Stijn kijkt mee",
+    body:
+      "Er wordt van boven even meegekeken. En als er iemand wist hoe je een avond moest verlengen, versnellen en volledig uit de hand laten lopen, dan was het Stijn wel. Helaas voor jullie vindt hij dat jullie iets te makkelijk door het bord wandelen, en hield hij van een beetje naaien op zijn tijd. Even terug de chaos in!\n\nEffect: ga 3 vakjes achteruit. Voer het nieuwe vakje direct uit.",
+    effectType: "move_self",
+    delta: -3
+  },
+  {
+    id: "chance-verkeerde-afslag",
+    title: "Verkeerde Afslag",
+    body:
+      "Jullie hadden een taak: gewoon normaal de route volgen. Maar nee hoor, ergens tussen zelfvertrouwen en slechte orientatie is het weer misgegaan. Hoe dan ook: dit wordt jullie eigen probleem.\n\nEffect: jullie team wordt 4 vakjes vooruit gezet en voert het nieuwe vakje direct uit.",
+    effectType: "move_self",
+    delta: 4
+  },
+  {
+    id: "chance-blind-vertrouwen",
+    title: "Blind Vertrouwen",
+    body:
+      "Jullie zicht is tijdelijk uitgeschakeld. Een actief teamlid krijgt de blinddoek om. De rest begeleidt deze persoon naar de bar en laat hem of haar bestellen. Bij de bar mag de blinddoek even af. Daarna gaat de blinddoek opnieuw om en neemt dezelfde persoon geblinddoekt een flinke slok van het drankje. Bewijs via WhatsApp.",
     effectType: "task"
   },
   {
-    id: "chance-table-captain",
-    title: "Tafelkapitein",
-    body: "Vraag een onbekende groep om jullie teamnaam te scanderen. Film het bewijs voor WhatsApp.",
+    id: "chance-jij-bent-m",
+    title: "Jij Bent 'm",
+    body:
+      "Soms hoef je geen goede reden te hebben om iemand te naaien. Soms is het genoeg dat de app zegt dat het mag.\n\nEffect: kies een ander team. Dat team stopt direct met de huidige opdracht. De opdracht vervalt en dat team moet 3 minuten wachten voordat ze opnieuw mogen gooien.",
+    effectType: "team_choice_wait",
+    waitSeconds: 180
+  },
+  {
+    id: "chance-retour-afzender",
+    title: "Retour Afzender",
+    body:
+      "Jullie dachten lekker door te pakken, maar het bord is het daar niet mee eens. Soms moet je even terug naar waar het allemaal misging.\n\nEffect: ga terug naar het vorige straatvak waar jullie op stonden. Voer dat vakje opnieuw uit.",
+    effectType: "return_previous_street"
+  },
+  {
+    id: "chance-dorstige-douane",
+    title: "Dorstige Douane",
+    body:
+      "Ho, stop. De Dorstige Douane heeft jullie staande gehouden. Ieder actief teamlid moet 1 minuut op een been blijven staan. Tijdens deze minuut zegt ieder teamlid om de beurt: \"Ik ben volledig nuchter en betrouwbaar.\" Valt iemand om, raakt iemand met de tweede voet de grond of vergeet iemand de zin, dan begint de opdracht opnieuw. Bewijs via WhatsApp.",
     effectType: "task"
   },
   {
-    id: "chance-sabotage-lite",
-    title: "Mini Sabotage",
-    body: "Kies straks een ander actief team. Zij krijgen later een extra slokopdracht. Teamkeuze komt in een volgende fase.",
-    effectType: "future_team_choice"
+    id: "chance-wie-niet-weg-is",
+    title: "Wie Niet Weg Is...",
+    body:
+      "Jullie mogen iemand flink irriteren. Niet omdat het eerlijk is, niet omdat het nodig is, maar gewoon omdat het kan.\n\nEffect: kies een ander team. Dat team gaat 2 vakjes achteruit en voert het nieuwe vakje direct uit.",
+    effectType: "team_choice_move",
+    delta: -2
   },
   {
-    id: "chance-backstreet",
-    title: "Verdwaald",
-    body: "Jullie route is chaos. Doe een gênante overwinningsdans van 10 seconden en stuur bewijs in WhatsApp.",
-    effectType: "task"
-  },
-  {
-    id: "chance-cell-warning",
-    title: "Bijna Gepakt",
-    body: "Maak een mugshot-foto van het hele team. Bewijs via WhatsApp voordat jullie verder mogen.",
-    effectType: "task"
-  },
-  {
-    id: "chance-chain",
-    title: "Kettingreactie",
-    body: "Iedereen zegt om de beurt een drankwoord. Wie hapert neemt een slok. Film de laatste 10 seconden.",
-    effectType: "task"
-  },
-  {
-    id: "chance-bar-critic",
-    title: "Kroegrecensie",
-    body: "Neem een dramatische recensie op van jullie huidige locatie. Minimaal 15 seconden. Bewijs via WhatsApp.",
-    effectType: "task"
-  },
-  {
-    id: "chance-red-alert",
-    title: "Rood Alarm",
-    body: "Zoek iets roods in de buurt en maak er een teamfoto mee. Bewijs via WhatsApp.",
-    effectType: "task"
+    id: "chance-direct-naar-de-cel",
+    title: "Direct Naar De Cel",
+    body:
+      "Geen discussie. Geen uitleg. Geen hoger beroep. Jullie gedrag is beoordeeld en de conclusie is duidelijk: dit team moet even achter slot en grendel.\n\nEffect: ga direct naar de cel. Wacht 4 minuten. Daarna verschijnt de strafopdracht.",
+    effectType: "jail_self",
+    waitSeconds: 240
   }
 ];
 
-export const FUND_CARDS = [
+const FUND_CARDS = [
   {
-    id: "fund-second-chance",
-    title: "Tweede Kans",
-    body: "Jullie mogen deze opdracht als power-up zien. Voor nu: maak een overwinningsfoto en stuur bewijs in WhatsApp.",
-    effectType: "saved_powerup",
-    powerUpLabel: "Tweede Kans"
+    id: "fund-rondje-van-de-zaak",
+    title: "Rondje Van De Zaak",
+    body:
+      "Kijk eens aan. Eindelijk zit het een keer mee. Geen gezeik, geen straf, geen omweg, gewoon een klein cadeautje van het bord.\n\nEffect: jullie mogen direct opnieuw gooien. Deze bonusworp telt niet mee als normale dobbelbeurt.",
+    effectType: "bonus_roll"
   },
   {
-    id: "fund-skip-token",
-    title: "Overslaan?",
-    body: "Later kan dit een opdracht overslaan. In deze versie voeren jullie een korte cheers-video uit als testkaart.",
+    id: "fund-tjarda-de-spelleider",
+    title: "Tjarda de Spelleider",
+    body:
+      "Jullie hebben geluk. Tjarda is vandaag de spelleider en ziet blijkbaar precies genoeg om dit volledig door de vingers te zien.\n\nEffect: bewaar deze kaart. Jullie mogen deze een keer inzetten om een opdracht over te slaan. Na inzetten mogen jullie direct opnieuw gooien. Deze bonusworp telt niet mee als normale dobbelbeurt.",
     effectType: "saved_powerup",
-    powerUpLabel: "Opdracht overslaan"
+    powerUpLabel: "Opdracht overslaan",
+    savedPowerUpType: "skip_task"
   },
   {
-    id: "fund-shield",
-    title: "Beschermengel",
-    body: "Later beschermt dit tegen teamkeuzes. Nu: maak een foto met een beschermend gebaar. Bewijs via WhatsApp.",
+    id: "fund-hong-beschermt",
+    title: "Hong Beschermt",
+    body:
+      "Er hangt tijdelijk iets boven jullie hoofd. Geen idee wat precies, maar het voelt verdacht veel als Hong die van boven even meeblokt.\n\nEffect: bewaar deze kaart. De eerstvolgende keer dat een ander team jullie probeert te naaien, kan deze actie worden geblokkeerd.",
     effectType: "saved_powerup",
-    powerUpLabel: "Bescherming"
+    powerUpLabel: "Hong Beschermt",
+    savedPowerUpType: "shield"
   },
   {
-    id: "fund-extra-roll",
-    title: "Nog Een Keer",
-    body: "Later geeft dit opnieuw gooien. Nu: ieder actief teamlid roept 'nog eentje' in een video.",
-    effectType: "saved_powerup",
-    powerUpLabel: "Extra worp"
+    id: "fund-kleine-correctie",
+    title: "Kleine Correctie",
+    body:
+      "Het bord heeft even naar jullie gekeken en dacht: ach, deze stumpers kunnen wel wat hulp gebruiken.\n\nEffect: ga 2 vakjes vooruit. Voer het nieuwe vakje direct uit.",
+    effectType: "move_self",
+    delta: 2
   },
   {
-    id: "fund-tactical-chaos",
-    title: "Tactische Chaos",
-    body: "Later mag je een ander team beïnvloeden. Nu: stuur een mysterieuze teamselfie in WhatsApp.",
-    effectType: "saved_powerup",
-    powerUpLabel: "Tactische Chaos"
+    id: "fund-vriendendienst",
+    title: "Vriendendienst",
+    body:
+      "Jullie mogen heel even aardig zijn. Of irritant aardig, dat mag natuurlijk ook.\n\nEffect: kies een ander team. Dat team gaat 2 vakjes vooruit en voert het nieuwe vakje direct uit.",
+    effectType: "team_choice_move",
+    delta: 2
   },
   {
-    id: "fund-rescue",
-    title: "Redding",
-    body: "Later kan dit jullie redden uit ellende. Nu: film een dramatische reddingsscene van 10 seconden.",
+    id: "fund-celvrij-kaart",
+    title: "Celvrij Kaart",
+    body:
+      "Deze kaart bewaar je tot het moment dat het echt misgaat. Zit je straks in de cel? Niet vandaag.\n\nEffect: bewaar deze kaart. Als jullie later in de echte cel komen, mogen jullie een keer direct uit de cel zonder wachttijd en zonder Keizer Karelplein-opdracht.",
     effectType: "saved_powerup",
-    powerUpLabel: "Redding"
+    powerUpLabel: "Celvrij",
+    savedPowerUpType: "jail_free"
+  },
+  {
+    id: "fund-wisseltruc",
+    title: "Wisseltruc",
+    body:
+      "Even schuiven met de ellende. Bordspelletje, toch?\n\nEffect: kies een ander team en wissel van positie. Anders dan bij Wisselstation krijgt het gekozen team geen wachttijd. Beide teams voeren direct het nieuwe vakje uit.",
+    effectType: "swap_positions"
+  },
+  {
+    id: "fund-bezwaar-kroegraad",
+    title: "Bezwaar bij de Kroegraad",
+    body:
+      "De Kroegraad denkt dat ze de baas zijn. Meestal klopt dat. Maar vandaag hebben jullie een keer een officieel bezwaarschrift op zak.\n\nEffect: bewaar deze kaart. Jullie mogen een keer een afkeuring van de Kroegraad omzetten naar goedgekeurd, tenzij het bewijs volledig ontbreekt.",
+    effectType: "saved_powerup",
+    powerUpLabel: "Bezwaar",
+    savedPowerUpType: "objection"
   }
 ];
+
+export const CARD_DECKS = {
+  chance: CHANCE_CARDS,
+  fund: FUND_CARDS
+};
 
 export function drawCard(type) {
-  const cards = type === "fund" ? FUND_CARDS : CHANCE_CARDS;
-  return cards[Math.floor(Math.random() * cards.length)];
+  const deck = CARD_DECKS[type] ?? CARD_DECKS.chance;
+  return deck[Math.floor(Math.random() * deck.length)];
 }

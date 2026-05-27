@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from "../data/gameConfig.js";
-import { drawCard } from "../data/cards.js";
+import { CARD_DECKS, drawCard } from "../data/cards.js";
 import { createTaskForTile, REJECTION_PENALTY } from "../data/tasks.js";
 import { TEAMS, findKroegraad, findTeamByCode, findTeamById, findTeamByLogin } from "../data/teams.js";
 import { findTileById } from "../data/tiles.js";
@@ -55,6 +55,10 @@ function createTeamState(team) {
     savedPowerUp: null,
     rejectionPenalty: null,
     proofInWhatsapp: false,
+    pendingBonusRoll: false,
+    jailUntil: null,
+    waitUntil: null,
+    lastStreetTileId: null,
     lastMove: null
   };
 }
@@ -174,6 +178,67 @@ function tickState(state) {
     }
 
     return startedState;
+  }
+
+  if (state.phase === GAME_PHASE.RUNNING) {
+    let nextState = state;
+
+    for (const team of TEAMS) {
+      const teamState = nextState.teams[team.id];
+
+      if (
+        teamState.status === TEAM_STATUS.WAITING_SWAP &&
+        teamState.waitUntil &&
+        now() >= teamState.waitUntil
+      ) {
+        nextState = {
+          ...nextState,
+          teams: {
+            ...nextState.teams,
+            [team.id]: {
+              ...teamState,
+              waitUntil: null,
+              currentTask: null,
+              status: getApprovedNextStatus(nextState, teamState)
+            }
+          }
+        };
+      }
+
+      if (
+        teamState.status === TEAM_STATUS.IN_JAIL &&
+        teamState.jailUntil &&
+        now() >= teamState.jailUntil
+      ) {
+        nextState = {
+          ...nextState,
+          teams: {
+            ...nextState.teams,
+            [team.id]: {
+              ...teamState,
+              jailUntil: null,
+              currentTask: {
+                title: "Strafopdracht cel",
+                body: "Loop een volledig rondje om het Keizer Karelplein. Bewijs via WhatsApp.",
+                placeholder: false,
+                presentation: "jail"
+              },
+              activePopup: {
+                title: "Strafopdracht",
+                body: "Loop een volledig rondje om het Keizer Karelplein. Bewijs via WhatsApp.",
+                kind: "task",
+                stage: "detail"
+              },
+              status: TEAM_STATUS.TASK_ACTIVE
+            }
+          }
+        };
+      }
+    }
+
+    if (nextState !== state) {
+      return nextState;
+    }
   }
 
   return state;
@@ -513,7 +578,13 @@ export function isGameTimeUp(state = getState()) {
 }
 
 function isOpenTaskStatus(status) {
-  return [TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.WAITING_KROEGRAAD, TEAM_STATUS.REJECTED].includes(status);
+  return [
+    TEAM_STATUS.TASK_ACTIVE,
+    TEAM_STATUS.WAITING_KROEGRAAD,
+    TEAM_STATUS.REJECTED,
+    TEAM_STATUS.IN_JAIL,
+    TEAM_STATUS.WAITING_SWAP
+  ].includes(status);
 }
 
 function hasTeamReachedTurnLimit(teamState) {
@@ -539,6 +610,234 @@ function getApprovedNextStatus(state, teamState) {
   return TEAM_STATUS.APPROVED;
 }
 
+function normalizeBoardPosition(rawPosition) {
+  return {
+    position: ((rawPosition - 1) % 40) + 1,
+    roundsGained: Math.floor((rawPosition - 1) / 40)
+  };
+}
+
+function createTaskFromCard(card, presentation) {
+  return {
+    title: card.title,
+    body: card.body,
+    placeholder: card.effectType !== "task",
+    presentation,
+    cardId: card.id,
+    effectType: card.effectType,
+    delta: card.delta ?? 0,
+    waitSeconds: card.waitSeconds ?? null,
+    powerUpLabel: card.powerUpLabel,
+    savedPowerUpType: card.savedPowerUpType
+  };
+}
+
+function moveTeamByDelta(state, teamId, delta, options = {}) {
+  const teamState = state.teams[teamId];
+  const rawPosition = teamState.position + delta;
+  const { position, roundsGained } = normalizeBoardPosition(rawPosition);
+  const tile = findTileById(position);
+  const task = createTaskFromTileBehavior(tile);
+  const movedAt = now();
+
+  const movedState = {
+    ...state,
+    teams: {
+      ...state.teams,
+      [teamId]: {
+        ...teamState,
+        position,
+        currentTileId: position,
+        completedRounds: teamState.completedRounds + roundsGained,
+        positionReachedAt: movedAt,
+        currentTask: task,
+        activePopup: options.keepPopup ? teamState.activePopup : null,
+        rejectionPenalty: null,
+        proofInWhatsapp: false,
+        lastStreetTileId: tile.type === "Straatvak" ? position : teamState.lastStreetTileId,
+        lastMove: {
+          roll: teamState.lastMove?.roll ?? teamState.lastRoll,
+          from: teamState.position,
+          to: position,
+          roundsGained,
+          crossedStart: roundsGained > 0,
+          tileName: tile.name,
+          movedAt,
+          source: options.source ?? "card"
+        },
+        status: TEAM_STATUS.TASK_ACTIVE
+      }
+    }
+  };
+
+  if (position === 11 || position === 31) {
+    return sendTeamToJail(movedState, teamId);
+  }
+
+  return movedState;
+}
+
+function moveTeamToTile(state, teamId, position, options = {}) {
+  const teamState = state.teams[teamId];
+  const tile = findTileById(position);
+  const task = createTaskFromTileBehavior(tile);
+  const movedAt = now();
+
+  return {
+    ...state,
+    teams: {
+      ...state.teams,
+      [teamId]: {
+        ...teamState,
+        position,
+        currentTileId: position,
+        positionReachedAt: movedAt,
+        currentTask: task,
+        activePopup: options.keepPopup ? teamState.activePopup : null,
+        rejectionPenalty: null,
+        proofInWhatsapp: false,
+        lastStreetTileId: tile.type === "Straatvak" ? position : teamState.lastStreetTileId,
+        lastMove: {
+          roll: teamState.lastMove?.roll ?? teamState.lastRoll,
+          from: teamState.position,
+          to: position,
+          roundsGained: 0,
+          crossedStart: false,
+          tileName: tile.name,
+          movedAt,
+          source: options.source ?? "card"
+        },
+        status: TEAM_STATUS.TASK_ACTIVE
+      }
+    }
+  };
+}
+
+function sendTeamToJail(state, teamId) {
+  const teamState = state.teams[teamId];
+  const jailUntil = now() + 4 * 60 * 1000;
+
+  return {
+    ...state,
+    teams: {
+      ...state.teams,
+      [teamId]: {
+        ...teamState,
+        position: 11,
+        currentTileId: 11,
+        positionReachedAt: now(),
+        jailUntil,
+        proofInWhatsapp: false,
+        rejectionPenalty: null,
+        activePopup: teamState.activePopup,
+        currentTask: {
+          title: "Echte cel",
+          body: "Jullie zitten in de cel. Wacht 4 minuten. Daarna krijgen jullie je strafopdracht.",
+          placeholder: false,
+          presentation: "jail"
+        },
+        status: TEAM_STATUS.IN_JAIL
+      }
+    }
+  };
+}
+
+function createTaskForCurrentTile(teamState) {
+  return createTaskFromTileBehavior(findTileById(teamState.currentTileId));
+}
+
+function setTargetNotification(state, teamId, title, body, kind = "chance") {
+  const teamState = state.teams[teamId];
+  return {
+    ...state,
+    teams: {
+      ...state.teams,
+      [teamId]: {
+        ...teamState,
+        activePopup: {
+          title,
+          body,
+          kind,
+          stage: "detail"
+        }
+      }
+    }
+  };
+}
+
+function applyImmediateTaskEffect(state, teamId) {
+  const teamState = state.teams[teamId];
+  const task = teamState?.currentTask;
+  if (!task) {
+    return state;
+  }
+
+  if (teamState.currentTileId === 31) {
+    return sendTeamToJail(state, teamId);
+  }
+
+  if (task.effectType === "move_self") {
+    return moveTeamByDelta(state, teamId, task.delta, { keepPopup: true, source: task.presentation });
+  }
+
+  if (task.effectType === "return_previous_street") {
+    return moveTeamToTile(state, teamId, teamState.lastStreetTileId ?? teamState.position, {
+      keepPopup: true,
+      source: task.presentation
+    });
+  }
+
+  if (task.effectType === "jail_self") {
+    return sendTeamToJail(state, teamId);
+  }
+
+  if (task.effectType === "bonus_roll") {
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          pendingBonusRoll: true,
+          proofInWhatsapp: false,
+          status: TEAM_STATUS.APPROVED
+        }
+      }
+    };
+  }
+
+  if (task.effectType === "saved_powerup") {
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          savedPowerUp: {
+            id: task.cardId,
+            title: task.title,
+            label: task.powerUpLabel ?? task.title,
+            body: task.body,
+            type: task.savedPowerUpType
+          },
+          proofInWhatsapp: false,
+          status: TEAM_STATUS.APPROVED
+        }
+      }
+    };
+  }
+
+  return state;
+}
+
+function isProtectedFromTeamChoice(teamState) {
+  return (
+    teamState?.status === TEAM_STATUS.IN_JAIL ||
+    teamState?.status === TEAM_STATUS.FINISHED ||
+    teamState?.savedPowerUp?.type === "shield"
+  );
+}
+
 export function getTeamState(teamId, state = getState()) {
   const team = findTeamById(teamId);
   if (!team) {
@@ -555,22 +854,22 @@ export function rollDice(teamId) {
       state.phase === GAME_PHASE.RUNNING &&
       !state.paused &&
       !state.timerFinishedAt &&
-      !hasTeamReachedTurnLimit(teamState) &&
+      (teamState?.pendingBonusRoll || !hasTeamReachedTurnLimit(teamState)) &&
       [TEAM_STATUS.CAN_ROLL, TEAM_STATUS.APPROVED].includes(teamState?.status);
 
     if (!canRoll) {
       return state;
     }
 
+    const isBonusRoll = Boolean(teamState.pendingBonusRoll);
     const roll = Math.floor(Math.random() * 6) + 1;
     const rawPosition = teamState.position + roll;
-    const roundsGained = Math.floor((rawPosition - 1) / 40);
+    const { position: nextPosition, roundsGained } = normalizeBoardPosition(rawPosition);
     const completedRounds = teamState.completedRounds + roundsGained;
-    const nextPosition = ((rawPosition - 1) % 40) + 1;
     const tile = findTileById(nextPosition);
     const task = createTaskFromTileBehavior(tile);
-
-    return {
+    const movedAt = now();
+    const nextState = {
       ...state,
       teams: {
         ...state.teams,
@@ -579,17 +878,23 @@ export function rollDice(teamId) {
           position: nextPosition,
           currentTileId: nextPosition,
           completedRounds,
-          positionReachedAt: now(),
-          normalTurnsUsed: teamState.normalTurnsUsed + 1,
+          positionReachedAt: movedAt,
+          normalTurnsUsed: teamState.normalTurnsUsed + (isBonusRoll ? 0 : 1),
+          pendingBonusRoll: false,
           lastRoll: roll,
           currentTask: task,
-          activePopup: {
-            title: task.title,
-            body: task.body,
-            kind: task.presentation ?? "task"
-          },
+          activePopup: ["chance", "fund", "swap"].includes(task.presentation)
+            ? {
+                title: task.title,
+                body: task.body,
+                kind: task.presentation,
+                stage: "intro",
+                cardId: task.cardId
+              }
+            : null,
           rejectionPenalty: null,
           proofInWhatsapp: false,
+          lastStreetTileId: tile.type === "Straatvak" ? nextPosition : teamState.lastStreetTileId,
           lastMove: {
             roll,
             from: teamState.position,
@@ -597,38 +902,38 @@ export function rollDice(teamId) {
             roundsGained,
             crossedStart: roundsGained > 0,
             tileName: tile.name,
-            movedAt: now()
+            movedAt
           },
           status: TEAM_STATUS.TASK_ACTIVE
         }
       }
     };
+
+    return applyImmediateTaskEffect(nextState, teamId);
   });
 }
 
 function createTaskFromTileBehavior(tile) {
   if (tile.type === "Kans") {
     const card = drawCard("chance");
-    return {
-      title: card.title,
-      body: card.body,
-      placeholder: card.effectType !== "task",
-      presentation: "chance",
-      cardId: card.id,
-      effectType: card.effectType
-    };
+    return createTaskFromCard(card, "chance");
   }
 
   if (tile.type === "Algemeen Fonds") {
     const card = drawCard("fund");
+    return createTaskFromCard(card, "fund");
+  }
+
+  if (tile.type === "Wisselstation") {
     return {
-      title: card.title,
-      body: card.body,
-      placeholder: true,
-      presentation: "fund",
-      cardId: card.id,
-      effectType: card.effectType,
-      powerUpLabel: card.powerUpLabel
+      title: "Wisselstation",
+      body:
+        "Kies een ander team om mee te wisselen. Het gekozen team stopt direct met de huidige opdracht, krijgt geen nieuwe opdracht en moet 3 minuten wachten. Jullie mogen daarna direct opnieuw gooien.",
+      placeholder: false,
+      presentation: "swap",
+      cardId: `wisselstation-${tile.id}`,
+      effectType: "wisselstation",
+      waitSeconds: 180
     };
   }
 
@@ -652,6 +957,245 @@ export function dismissTeamPopup(teamId) {
         }
       }
     };
+  });
+}
+
+export function revealTeamPopupCard(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    if (!teamState?.activePopup) {
+      return state;
+    }
+
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          activePopup: {
+            ...teamState.activePopup,
+            stage: "detail"
+          }
+        }
+      }
+    };
+  });
+}
+
+export function applyTeamChoiceEffect(teamId, targetTeamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const targetState = state.teams[targetTeamId];
+    const task = teamState?.currentTask;
+    if (!teamState || !targetState || !task || teamId === targetTeamId) {
+      return state;
+    }
+
+    if (isProtectedFromTeamChoice(targetState)) {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            activePopup: {
+              ...teamState.activePopup,
+              stage: "detail",
+              blockedChoiceMessage: "Dit team is tijdelijk beschermd. Kies een ander team."
+            }
+          }
+        }
+      };
+    }
+
+    if (task.effectType === "team_choice_move") {
+      let movedState = moveTeamByDelta(state, targetTeamId, task.delta, {
+        keepPopup: false,
+        source: task.presentation
+      });
+      const movedTarget = movedState.teams[targetTeamId];
+      movedState = setTargetNotification(
+        movedState,
+        targetTeamId,
+        "Jullie zijn geraakt",
+        `Een ander team heeft jullie ${Math.abs(task.delta)} vakjes ${task.delta < 0 ? "terug" : "vooruit"} gezet. Jullie oude opdracht vervalt en het nieuwe vakje wordt direct uitgevoerd.`,
+        task.presentation ?? "chance"
+      );
+
+      return {
+        ...movedState,
+        teams: {
+          ...movedState.teams,
+          [teamId]: {
+            ...teamState,
+            activePopup: {
+              title: "Team geraakt",
+              body: `${findTeamById(targetTeamId)?.name ?? "Het gekozen team"} is verplaatst. Jullie kaart is uitgevoerd.`,
+              kind: task.presentation ?? "chance",
+              stage: "detail"
+            },
+            currentTask: null,
+            proofInWhatsapp: false,
+            status: getApprovedNextStatus(state, teamState)
+          },
+          [targetTeamId]: {
+            ...movedState.teams[targetTeamId],
+            lastMove: movedTarget.lastMove
+          }
+        }
+      };
+    }
+
+    if (task.effectType === "team_choice_wait") {
+      const waitUntil = now() + (task.waitSeconds ?? 180) * 1000;
+      const targetName = findTeamById(targetTeamId)?.name ?? "Het gekozen team";
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            activePopup: {
+              title: "Team geraakt",
+              body: `${targetName} moet 3 minuten wachten. Hun huidige opdracht is vervallen.`,
+              kind: task.presentation ?? "chance",
+              stage: "detail"
+            },
+            currentTask: null,
+            proofInWhatsapp: false,
+            status: getApprovedNextStatus(state, teamState)
+          },
+          [targetTeamId]: {
+            ...targetState,
+            currentTask: {
+              title: "Jullie zijn geraakt",
+              body: "Jullie huidige opdracht vervalt. Wacht 3 minuten voordat jullie opnieuw mogen gooien.",
+              placeholder: false,
+              presentation: "wait"
+            },
+            waitUntil,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: TEAM_STATUS.WAITING_SWAP,
+            activePopup: {
+              title: "Jullie zijn geraakt",
+              body: "Een ander team heeft jullie uit de flow getrokken. Jullie huidige opdracht vervalt. Wacht 3 minuten voordat jullie opnieuw mogen gooien.",
+              kind: task.presentation ?? "chance",
+              stage: "detail"
+            }
+          }
+        }
+      };
+    }
+
+    if (task.effectType === "wisselstation") {
+      const waitUntil = now() + (task.waitSeconds ?? 180) * 1000;
+      const swappedAt = now();
+      const actorOldPosition = teamState.position;
+      const targetOldPosition = targetState.position;
+      const targetName = findTeamById(targetTeamId)?.name ?? "Het gekozen team";
+      const baseState = {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            position: targetOldPosition,
+            currentTileId: targetOldPosition,
+            positionReachedAt: swappedAt,
+            currentTask: null,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: getApprovedNextStatus(state, teamState),
+            activePopup: {
+              title: "Wisselstation gelukt",
+              body: `Jullie zijn gewisseld met ${targetName}. Jullie mogen direct opnieuw gooien.`,
+              kind: "swap",
+              stage: "detail"
+            }
+          },
+          [targetTeamId]: {
+            ...targetState,
+            position: actorOldPosition,
+            currentTileId: actorOldPosition,
+            positionReachedAt: swappedAt,
+            currentTask: {
+              title: "Gewisseld door Wisselstation",
+              body: "Jullie zijn gewisseld door een ander team. Jullie huidige opdracht vervalt. Wacht 3 minuten voordat jullie opnieuw mogen gooien.",
+              placeholder: false,
+              presentation: "wait"
+            },
+            waitUntil,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: TEAM_STATUS.WAITING_SWAP,
+            activePopup: {
+              title: "Jullie zijn gewisseld",
+              body: "Jullie zijn gewisseld door een ander team. Jullie huidige opdracht vervalt. Wacht 3 minuten voordat jullie opnieuw mogen gooien.",
+              kind: "swap",
+              stage: "detail"
+            }
+          }
+        }
+      };
+
+      if (actorOldPosition === 31) {
+        return sendTeamToJail(baseState, targetTeamId);
+      }
+
+      return baseState;
+    }
+
+    if (task.effectType === "swap_positions") {
+      const actorTile = findTileById(targetState.position);
+      const targetTile = findTileById(teamState.position);
+      const actorTask = createTaskFromTileBehavior(actorTile);
+      const targetTask = createTaskFromTileBehavior(targetTile);
+      const swappedAt = now();
+      const targetName = findTeamById(targetTeamId)?.name ?? "Het gekozen team";
+
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            position: targetState.position,
+            currentTileId: targetState.position,
+            positionReachedAt: swappedAt,
+            currentTask: actorTask,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: TEAM_STATUS.TASK_ACTIVE,
+            activePopup: {
+              title: "Wisseltruc gelukt",
+              body: `Jullie zijn gewisseld met ${targetName}. Jullie voeren nu het nieuwe vakje direct uit.`,
+              kind: "fund",
+              stage: "detail"
+            }
+          },
+          [targetTeamId]: {
+            ...targetState,
+            position: teamState.position,
+            currentTileId: teamState.position,
+            positionReachedAt: swappedAt,
+            currentTask: targetTask,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: TEAM_STATUS.TASK_ACTIVE,
+            activePopup: {
+              title: "Jullie zijn gewisseld",
+              body: "Een ander team heeft Wisseltruc gebruikt. Jullie oude opdracht vervalt en jullie voeren nu het nieuwe vakje direct uit.",
+              kind: "fund",
+              stage: "detail"
+            }
+          }
+        }
+      };
+    }
+
+    return state;
   });
 }
 
@@ -828,17 +1372,9 @@ export function demoDrawCard(teamId, type) {
     }
 
     const card = drawCard(type === "fund" ? "fund" : "chance");
-    const task = {
-      title: card.title,
-      body: card.body,
-      placeholder: card.effectType !== "task",
-      presentation: type === "fund" ? "fund" : "chance",
-      cardId: card.id,
-      effectType: card.effectType,
-      powerUpLabel: card.powerUpLabel
-    };
+    const task = createTaskFromCard(card, type === "fund" ? "fund" : "chance");
 
-    return {
+    const nextState = {
       ...state,
       teams: {
         ...state.teams,
@@ -848,11 +1384,91 @@ export function demoDrawCard(teamId, type) {
           activePopup: {
             title: task.title,
             body: task.body,
-            kind: task.presentation
+            kind: task.presentation,
+            stage: "intro",
+            cardId: task.cardId
           },
           proofInWhatsapp: false,
           rejectionPenalty: null,
           status: TEAM_STATUS.TASK_ACTIVE
+        }
+      }
+    };
+
+    return applyImmediateTaskEffect(nextState, teamId);
+  });
+}
+
+export function demoDrawTeamChoiceCard(teamId, type = "chance") {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    if (!teamState) {
+      return state;
+    }
+
+    const deckType = type === "fund" ? "fund" : "chance";
+    const card = CARD_DECKS[deckType].find((item) =>
+      ["team_choice_wait", "team_choice_move", "swap_positions"].includes(item.effectType)
+    );
+    if (!card) {
+      return state;
+    }
+
+    const task = createTaskFromCard(card, deckType);
+    const nextState = {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          currentTask: task,
+          activePopup: {
+            title: task.title,
+            body: task.body,
+            kind: task.presentation,
+            stage: "intro",
+            cardId: task.cardId
+          },
+          proofInWhatsapp: false,
+          rejectionPenalty: null,
+          status: TEAM_STATUS.TASK_ACTIVE
+        }
+      }
+    };
+
+    return applyImmediateTaskEffect(nextState, teamId);
+  });
+}
+
+export function demoEnterWisselstation(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    if (!teamState) {
+      return state;
+    }
+
+    const tile = findTileById(16);
+    const task = createTaskFromTileBehavior(tile);
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          position: 16,
+          currentTileId: 16,
+          positionReachedAt: now(),
+          currentTask: task,
+          proofInWhatsapp: false,
+          rejectionPenalty: null,
+          status: TEAM_STATUS.TASK_ACTIVE,
+          activePopup: {
+            title: task.title,
+            body: task.body,
+            kind: task.presentation,
+            stage: "detail",
+            cardId: task.cardId
+          }
         }
       }
     };
@@ -866,6 +1482,71 @@ export function useSavedPowerUp(teamId) {
       return state;
     }
 
+    if (teamState.savedPowerUp.type === "skip_task") {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            currentTask: null,
+            savedPowerUp: null,
+            pendingBonusRoll: true,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: TEAM_STATUS.APPROVED,
+            activePopup: {
+              title: "Opdracht overgeslagen",
+              body: "Jullie hebben de opdracht overgeslagen. De volgende worp is een bonusworp en telt niet mee als normale dobbelbeurt.",
+              kind: "fund"
+            }
+          }
+        }
+      };
+    }
+
+    if (teamState.savedPowerUp.type === "objection" && teamState.status === TEAM_STATUS.REJECTED) {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            savedPowerUp: null,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: getApprovedNextStatus(state, teamState),
+            activePopup: {
+              title: "Bezwaar toegekend",
+              body: "Jullie afkeuring is omgezet naar goedgekeurd. Jullie mogen verder.",
+              kind: "fund"
+            }
+          }
+        }
+      };
+    }
+
+    if (teamState.savedPowerUp.type === "jail_free" && teamState.status === TEAM_STATUS.IN_JAIL) {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            savedPowerUp: null,
+            jailUntil: null,
+            currentTask: null,
+            status: TEAM_STATUS.APPROVED,
+            activePopup: {
+              title: "Celvrij gebruikt",
+              body: "Jullie zijn direct uit de cel. Geen wachttijd en geen Keizer Karelplein-opdracht.",
+              kind: "fund"
+            }
+          }
+        }
+      };
+    }
+
     return {
       ...state,
       teams: {
@@ -874,7 +1555,7 @@ export function useSavedPowerUp(teamId) {
           ...teamState,
           activePopup: {
             title: "Power-up gebruikt",
-            body: `${teamState.savedPowerUp.label} is gebruikt. Het echte effect wordt in een volgende fase gekoppeld.`,
+            body: `${teamState.savedPowerUp.label} staat nu als gebruikt. De automatische blokkade bij inkomende teamacties koppelen we in de volgende laag.`,
             kind: "fund"
           },
           savedPowerUp: null

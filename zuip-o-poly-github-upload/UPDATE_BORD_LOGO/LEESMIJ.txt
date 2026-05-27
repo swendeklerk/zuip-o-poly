@@ -1,0 +1,1 @@
+Upload de map zuip-o-poly-github-upload uit deze map naar de hoofdpagina van je GitHub repo. Klik daarna Commit changes. Deze update zet het Zuip-O-Poly logo midden in het bord.
