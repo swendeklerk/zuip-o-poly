@@ -20,6 +20,7 @@ import {
   runClockTick,
   startCountdown,
   startTeamDemo,
+  startLobbyDemo,
   submitProofInWhatsapp,
   dismissTeamPopup,
   demoResolveTeamTask,
@@ -37,7 +38,9 @@ const ui = {
   loginMode: "team",
   teamTab: "play",
   error: "",
-  notice: ""
+  notice: "",
+  demoToolsVisible: false,
+  skipRemoteSync: false
 };
 
 function logoMarkup(compact = false) {
@@ -77,7 +80,11 @@ function button(label, className = "primary", attrs = "") {
 }
 
 function teamBadge(team) {
-  return `<span class="team-icon" style="--team-accent:${team.accent}" aria-hidden="true">●●●</span>`;
+  return `
+    <span class="team-icon" style="--team-accent:${team.accent}" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </span>
+  `;
 }
 
 function getTileName(tileId) {
@@ -85,8 +92,7 @@ function getTileName(tileId) {
 }
 
 function getRoundLabel(teamState) {
-  const currentRound = Math.min(teamState.completedRounds + 1, GAME_CONFIG.displayRounds);
-  return `Ronde ${currentRound} van ${GAME_CONFIG.displayRounds}`;
+  return `Ronde ${teamState.completedRounds + 1}`;
 }
 
 function getTurnLabel(teamState) {
@@ -158,12 +164,6 @@ function renderLoggedOut() {
         <button class="${ui.loginMode === "kroegraad" ? "active" : ""}" data-action="mode-kroegraad">Kroegraad</button>
       </div>
       ${ui.loginMode === "team" ? renderTeamLogin() : renderKroegraadLogin()}
-      <section class="panel demo-panel">
-        <p class="eyebrow">Testomgeving</p>
-        <h2>Even rondklikken als team</h2>
-        <p class="helper">Start direct als Bruine Kroeg met alle teams al ingelogd en het spel al gestart.</p>
-        ${button("Start test als Bruine Kroeg", "ghost", 'data-action="start-team-demo"')}
-      </section>
       ${ui.error ? `<p class="form-message error">${ui.error}</p>` : ""}
       ${ui.notice ? `<p class="form-message">${ui.notice}</p>` : ""}
     </section>
@@ -272,22 +272,14 @@ function renderTeamRunning(team, teamState, state) {
 
 function renderTurnStrip(teamState) {
   const lastRoll = teamState.lastRoll ?? teamState.lastMove?.roll ?? null;
+  if (!lastRoll) {
+    return "";
+  }
+
   return `
-    <section class="timer-strip turn-strip">
-      <div>
-        <span>Normale dobbelbeurten</span>
-        <strong>${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns}</strong>
-      </div>
-      ${
-        lastRoll
-          ? `
-            <div class="last-roll-chip" aria-label="Laatste worp ${lastRoll}">
-              <span>Worp</span>
-              <strong class="last-roll-value">${lastRoll}</strong>
-            </div>
-          `
-          : ""
-      }
+    <section class="roll-result-strip" aria-label="Laatste worp ${lastRoll}">
+      <span>Je gooide</span>
+      <strong>${lastRoll}</strong>
     </section>
   `;
 }
@@ -330,18 +322,43 @@ function renderTeamPopup(teamState, teamId) {
 }
 
 function renderActivePlayCard(teamState, teamId, currentTile) {
-  if ([TEAM_STATUS.CAN_ROLL, TEAM_STATUS.APPROVED].includes(teamState.status)) {
+  if (teamState.status === TEAM_STATUS.CAN_ROLL) {
     return `${renderDicePanel(teamState, teamId)}${renderPowerUpPanel(teamState, teamId)}`;
+  }
+
+  if (teamState.status === TEAM_STATUS.APPROVED) {
+    return `
+      <section class="panel play-panel verdict-panel approved-panel approved-ready-panel">
+        <p class="eyebrow">Goedgekeurd</p>
+        <h2>GOEDGEKEURD</h2>
+        <p class="tile-type">De Kroegraad heeft jullie bewijs goedgekeurd. Jullie mogen door naar de volgende worp.</p>
+      </section>
+      ${renderDicePanel(teamState, teamId)}
+      ${renderPowerUpPanel(teamState, teamId)}
+    `;
   }
 
   if (teamState.status === TEAM_STATUS.WAITING_KROEGRAAD) {
     return `
-      <section class="panel play-panel status-panel">
-        <div class="status-card-icon" aria-hidden="true"></div>
+      <section class="panel play-panel verdict-panel waiting-review-panel">
+        <div class="verdict-icon" aria-hidden="true">✓</div>
         <div>
-          <p class="eyebrow">De Kroegraad beoordeelt jullie bewijs...</p>
-          <p class="tile-type">Zodra jullie bewijs is goedgekeurd, mag je opnieuw gooien.</p>
+          <p class="eyebrow">Bewijs verstuurd</p>
+          <h2>Wacht op Kroegraad</h2>
+          <p class="tile-type">Bewijs staat in WhatsApp. De toegewezen Kroegraad ziet jullie nu bovenaan als TE KEUREN.</p>
         </div>
+        ${renderActionButton(teamState, teamId)}
+      </section>
+    `;
+  }
+
+  if (teamState.status === TEAM_STATUS.REJECTED) {
+    return `
+      <section class="panel play-panel verdict-panel rejected-panel">
+        <p class="eyebrow">Afgekeurd</p>
+        <h2>AFGEKEURD</h2>
+        <p class="tile-type">Niet door de Kroegraad gekomen. Doe de straf en stuur daarna opnieuw bewijs via WhatsApp.</p>
+        ${renderTask(teamState)}
         ${renderActionButton(teamState, teamId)}
       </section>
     `;
@@ -359,7 +376,7 @@ function renderActivePlayCard(teamState, teamId, currentTile) {
 
   return `
     <section class="panel play-panel">
-      <p class="eyebrow">${teamState.status === TEAM_STATUS.REJECTED ? "Afgekeurd" : "Huidige opdracht"}</p>
+      <p class="eyebrow">Huidige opdracht</p>
       <h2>${currentTile?.name ?? "Onbekend vak"}</h2>
       <p class="tile-type">${currentTile?.type ?? ""}</p>
       ${renderTask(teamState)}
@@ -400,6 +417,9 @@ function renderTeamBoard(team, teamState, state) {
           <strong>Vak ${teamState.currentTileId}</strong>
         </div>
         <div class="board-grid" aria-label="Zuip-O-Poly bord">
+          <div class="board-center-logo" aria-hidden="true">
+            <img src="./assets/zuipopoly-board-logo.svg" alt="" />
+          </div>
           ${getBoardCells()
             .map((cell) => renderBoardCell(cell, teamState))
             .join("")}
@@ -478,7 +498,7 @@ function renderMoveFlash(teamState) {
 
 function renderDemoTools(team, teamState) {
   const session = getCurrentSession();
-  if (!session?.demo) {
+  if (!session?.demo || !ui.demoToolsVisible) {
     return "";
   }
 
@@ -536,7 +556,7 @@ function renderDicePanel(teamState, teamId) {
     return "";
   }
 
-  const face = teamState.lastRoll ?? 3;
+  const face = 3;
   return `
     <section class="panel dice-panel">
       <p class="eyebrow">${teamState.status === TEAM_STATUS.APPROVED ? "Goedgekeurd" : "Mag gooien"}</p>
@@ -592,13 +612,13 @@ function renderActionButton(teamState, teamId) {
 
 function renderKroegraadApp(session, state) {
   const user = KROEGRAAD_USERS.find((item) => item.id === session.kroegraadId);
-  const displayName = user?.loginName ?? session.kroegraadId;
+  const displayName = user?.displayName ?? session.kroegraadId;
 
   if (state.phase === GAME_PHASE.COUNTDOWN) {
     app.innerHTML = `
       <section class="screen council-screen">
         ${logoMarkup(true)}
-        <div class="panel">
+        <div class="panel council-countdown-panel">
           <p class="eyebrow">Ingelogd als ${displayName}</p>
           <h2>Countdown loopt</h2>
           <div class="council-count">${getCountdownRemaining(state) ?? GAME_CONFIG.countdownSeconds}</div>
@@ -617,7 +637,7 @@ function renderKroegraadApp(session, state) {
   app.innerHTML = `
     <section class="screen council-screen">
       ${logoMarkup(true)}
-      <div class="panel">
+      <div class="panel council-lobby-panel">
         <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
         <h2>Ingelogd als ${displayName}</h2>
         <div class="checklist">
@@ -631,9 +651,11 @@ function renderKroegraadApp(session, state) {
             `;
           }).join("")}
         </div>
-        ${button("Spel starten", "primary", `data-action="start-game" ${canStart ? "" : "disabled"}`)}
-        ${button("Reset voorbereiding", "ghost", 'data-action="reset-prep"')}
-        ${button("Uitloggen", "ghost", 'data-action="logout"')}
+        <div class="lobby-actions">
+          ${button("Spel starten", "primary", `data-action="start-game" ${canStart ? "" : "disabled"}`)}
+          ${button("Reset voorbereiding", "ghost", 'data-action="reset-prep"')}
+          ${button("Uitloggen", "ghost", 'data-action="logout"')}
+        </div>
         <p class="helper">Starten kan pas zodra alle ${GAME_CONFIG.totalTeamsRequired} teams ingelogd zijn.</p>
       </div>
     </section>
@@ -649,10 +671,8 @@ function renderKroegraadRunning(session, state, displayName) {
       return Number(bNeedsReview) - Number(aNeedsReview);
     });
   const reviewCount = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD).length;
-  const busyCount = assigned.filter(({ teamState }) =>
-    [TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.REJECTED].includes(teamState.status)
-  ).length;
-  const finishedCount = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.FINISHED).length;
+  const reviewTeams = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD);
+  const otherTeams = assigned.filter(({ teamState }) => teamState.status !== TEAM_STATUS.WAITING_KROEGRAAD);
 
   app.innerHTML = `
     <section class="screen council-screen">
@@ -661,46 +681,48 @@ function renderKroegraadRunning(session, state, displayName) {
         <div class="council-command-top">
           <div>
             <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
-            <h2>${displayName}</h2>
+            <h2>Ingelogd als ${displayName}</h2>
           </div>
           <strong class="status-badge ${state.paused ? "is-paused" : "is-live"}">${state.paused ? "Gepauzeerd" : "Actief"}</strong>
         </div>
-        <div class="council-metrics" aria-label="Kroegraad overzicht">
-          <div class="metric-card is-review">
-            <span>Te keuren</span>
-            <strong>${reviewCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Bezig</span>
-            <strong>${busyCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Klaar</span>
-            <strong>${finishedCount}</strong>
-          </div>
-        </div>
         ${
           reviewCount
-            ? `<div class="council-alert">Er ${reviewCount === 1 ? "staat" : "staan"} ${reviewCount} ${reviewCount === 1 ? "team" : "teams"} klaar voor keuring.</div>`
-            : `<div class="council-empty-review">Geen open keuringen. Teams die bezig zijn komen vanzelf bovenaan zodra bewijs klaarstaat.</div>`
+            ? `<div class="council-alert">Nu keuren: ${reviewTeams.map(({ team }) => team.name).join(", ")}.</div>`
+            : `<div class="council-empty-review">Geen open keuringen. Je hoeft nu niets te doen.</div>`
         }
         <div class="council-actions">
           ${button(state.paused ? "Spel hervatten" : "Spel pauzeren", "ghost", 'data-action="toggle-pause"')}
           ${button("Uitloggen", "ghost small", 'data-action="logout"')}
         </div>
       </div>
-      <section class="team-list">
-        ${assigned.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState)).join("")}
+      <section class="council-section">
+        <div class="section-title-row">
+          <h2>Nu keuren</h2>
+          <span>${reviewCount}</span>
+        </div>
+        ${
+          reviewTeams.length
+            ? reviewTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState, true)).join("")
+            : `<div class="council-empty-review">Er staat nog geen bewijs klaar in WhatsApp.</div>`
+        }
+      </section>
+      <section class="council-section">
+        <div class="section-title-row">
+          <h2>Teamoverzicht</h2>
+          <span>${assigned.length}</span>
+        </div>
+        ${otherTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState)).join("")}
       </section>
       ${state.timerFinishedAt ? renderRankingPanel(state) : ""}
     </section>
   `;
 }
 
-function renderCouncilTeamCard(team, teamState) {
+function renderCouncilTeamCard(team, teamState, focus = false) {
   const needsReview = teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
   const isBusy = teamState.status === TEAM_STATUS.TASK_ACTIVE || teamState.status === TEAM_STATUS.REJECTED;
   const isFinished = teamState.status === TEAM_STATUS.FINISHED;
+  const hasSession = Boolean(teamState.activeSessionId);
   const statusClass = needsReview
     ? "is-review"
     : isBusy
@@ -713,12 +735,12 @@ function renderCouncilTeamCard(team, teamState) {
     : "Team is bezig met opdracht. Wachten op bewijs.";
 
   return `
-    <article class="team-card council-card ${needsReview ? "needs-review" : ""}" style="--team-accent:${team.accent}" data-status="${teamState.status}">
+    <article class="team-card council-card ${needsReview ? "needs-review" : ""} ${focus ? "is-focus-card" : ""}" style="--team-accent:${team.accent}" data-status="${teamState.status}">
       <div class="team-card-top">
         ${teamBadge(team)}
         <div>
           <h2>${team.name}</h2>
-          <p class="council-team-meta">Beurt ${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns}</p>
+          <p class="council-team-meta">Beurt ${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns} · ${hasSession ? "sessie actief" : "geen sessie"}</p>
         </div>
         <strong class="status-badge ${statusClass}">${needsReview ? "TE KEUREN" : teamState.status}</strong>
         <details class="team-menu">
@@ -734,8 +756,9 @@ function renderCouncilTeamCard(team, teamState) {
       ${
         needsReview && teamState.currentTask
           ? `
-            <p class="council-status is-hot">Bewijs staat in WhatsApp. Controleer de groepsapp en keur daarna hier.</p>
+            <p class="council-status is-hot">Bewijs staat in WhatsApp. Check de groepsapp en kies daarna hieronder.</p>
             <article class="task-card review-task">
+              <span class="review-label">Opdracht</span>
               <h3>${teamState.currentTask.title}</h3>
               <p>${teamState.currentTask.body}</p>
             </article>
@@ -904,8 +927,13 @@ app.addEventListener("click", (event) => {
   }
 
   if (action === "use-powerup") {
-    useSavedPowerUp(actionTarget.dataset.teamId);
-    render();
+    const powerupPanel = actionTarget.closest(".powerup-panel");
+    actionTarget.disabled = true;
+    powerupPanel?.classList.add("is-activating");
+    window.setTimeout(() => {
+      useSavedPowerUp(actionTarget.dataset.teamId);
+      render();
+    }, 900);
   }
 });
 
@@ -942,7 +970,9 @@ function consumeLaunchParams() {
   const shouldCleanUrl = params.has("demo") || params.has("logout") || params.has("reset");
 
   if (params.has("reset")) {
-    resetPreparation();
+    ui.skipRemoteSync = true;
+    resetPreparation({ force: true });
+    ui.demoToolsVisible = false;
   }
 
   if (params.has("logout") || params.has("reset")) {
@@ -950,7 +980,79 @@ function consumeLaunchParams() {
   }
 
   if (params.get("demo") === "team") {
+    ui.skipRemoteSync = true;
+    ui.demoToolsVisible = params.get("tools") === "1";
     startTeamDemo();
+  }
+
+  if (params.get("demo") === "council") {
+    ui.skipRemoteSync = true;
+    ui.demoToolsVisible = false;
+    startTeamDemo("team_bruine_kroeg");
+    demoDrawCard("team_bruine_kroeg", "fund");
+    submitProofInWhatsapp("team_bruine_kroeg");
+    clearCurrentSession();
+    loginKroegraad("LARS", "0311");
+  }
+
+  if (params.get("demo") === "approval") {
+    ui.skipRemoteSync = true;
+    ui.demoToolsVisible = false;
+    const view = params.get("as") ?? "lars";
+    const teamByView = {
+      bruine: "team_bruine_kroeg",
+      zwarte: "team_zwarte_pint",
+      witte: "team_witte_batavus"
+    };
+    const teamId = teamByView[view] ?? "team_bruine_kroeg";
+    startTeamDemo(teamId);
+    TEAMS.forEach((team, index) => {
+      demoDrawCard(team.id, index === 1 ? "chance" : "fund");
+      submitProofInWhatsapp(team.id);
+    });
+
+    if (view === "lars" || view === "swen") {
+      clearCurrentSession();
+      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
+    }
+  }
+
+  if (params.get("demo") === "lobby") {
+    ui.skipRemoteSync = true;
+    ui.demoToolsVisible = false;
+    const view = params.get("as") ?? "lars";
+    const teamByView = {
+      bruine: "team_bruine_kroeg",
+      zwarte: "team_zwarte_pint",
+      witte: "team_witte_batavus"
+    };
+    const teamId = teamByView[view] ?? "team_bruine_kroeg";
+    startLobbyDemo(teamId);
+
+    if (view === "lars" || view === "swen") {
+      clearCurrentSession();
+      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
+    }
+  }
+
+  if (params.get("demo") === "countdown") {
+    ui.skipRemoteSync = true;
+    ui.demoToolsVisible = false;
+    const view = params.get("as") ?? "lars";
+    const teamByView = {
+      bruine: "team_bruine_kroeg",
+      zwarte: "team_zwarte_pint",
+      witte: "team_witte_batavus"
+    };
+    const teamId = teamByView[view] ?? "team_bruine_kroeg";
+    startLobbyDemo(teamId);
+
+    if (view === "lars" || view === "swen") {
+      clearCurrentSession();
+      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
+    }
+
+    startCountdown();
   }
 
   if (shouldCleanUrl) {
@@ -960,13 +1062,17 @@ function consumeLaunchParams() {
 
 consumeLaunchParams();
 subscribe(render);
-initializeRemoteSync().then((result) => {
-  if (result.mode === "remote") {
-    console.info("Zuip-O-Poly draait met Supabase realtime sync.");
-  } else {
-    console.info("Zuip-O-Poly draait lokaal. Supabase is nog niet actief.");
-  }
-});
+if (ui.skipRemoteSync) {
+  console.info("Zuip-O-Poly draait in lokale demo-modus.");
+} else {
+  initializeRemoteSync().then((result) => {
+    if (result.mode === "remote") {
+      console.info("Zuip-O-Poly draait met Supabase realtime sync.");
+    } else {
+      console.info("Zuip-O-Poly draait lokaal. Supabase is nog niet actief.");
+    }
+  });
+}
 setInterval(() => {
   runClockTick();
   updateLiveClockText();
@@ -974,9 +1080,12 @@ setInterval(() => {
 
 function updateLiveClockText() {
   const state = getState();
-  const countdownNode = document.querySelector(".js-countdown");
-  if (countdownNode) {
-    countdownNode.textContent = String(getCountdownRemaining(state) ?? GAME_CONFIG.countdownSeconds);
+  const countdownNodes = document.querySelectorAll(".js-countdown, .council-count");
+  if (countdownNodes.length) {
+    const remaining = String(getCountdownRemaining(state) ?? GAME_CONFIG.countdownSeconds);
+    countdownNodes.forEach((node) => {
+      node.textContent = remaining;
+    });
   }
 
 }

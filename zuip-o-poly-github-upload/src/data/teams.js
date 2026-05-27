@@ -44,7 +44,8 @@ export const KROEGRAAD_USERS = [
 ];
 
 export function findTeamByCode(code) {
-  return TEAMS.find((team) => team.code === code);
+  const normalizedCode = String(code ?? "").trim().toUpperCase();
+  return TEAMS.find((team) => team.code === normalizedCode);
 }
 
 export function findTeamById(teamId) {

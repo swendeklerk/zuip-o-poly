@@ -289,10 +289,44 @@ export function startTeamDemo(teamId = "team_bruine_kroeg") {
   return { ok: true, team };
 }
 
+export function startLobbyDemo(teamId = "team_bruine_kroeg") {
+  const team = findTeamById(teamId);
+  if (!team) {
+    return { ok: false, message: "Onbekend demoteam." };
+  }
+
+  const sessionId = createId();
+  const loggedInAt = now();
+  const teamEntries = Object.fromEntries(
+    TEAMS.map((item) => [
+      item.id,
+      {
+        ...createTeamState(item),
+        loggedIn: true,
+        activeSessionId: item.id === team.id ? sessionId : `demo_lobby_${item.id}`,
+        loggedInAt,
+        status: TEAM_STATUS.WAITING_START
+      }
+    ])
+  );
+
+  saveState({
+    ...createDefaultState(),
+    phase: GAME_PHASE.PRESTART,
+    teams: teamEntries
+  });
+  setCurrentSession({ role: "team", teamId: team.id, sessionId, demo: true });
+
+  return { ok: true, team };
+}
+
 export function loginTeam(code) {
   const team = findTeamByCode(code);
   if (!team) {
-    return { ok: false, message: "Onbekende teamcode. Let op: teamcodes zijn hoofdlettergevoelig." };
+    return {
+      ok: false,
+      message: "Deze teamcode herken ik niet. Gebruik BRUINEKROEG, ZWARTEPINT of WITTEBATAVUS."
+    };
   }
 
   const state = getState();
@@ -301,7 +335,7 @@ export function loginTeam(code) {
     return {
       ok: false,
       message:
-        "Dit team is al actief op een ander toestel. Vraag de Kroegraad om de sessie vrij te geven."
+        "Dit team is al ingelogd. Voor lokaal testen: open opnieuw met ?reset=1. Tijdens de echte avond kan de Kroegraad de sessie vrijgeven."
     };
   }
 
@@ -333,9 +367,9 @@ export function loginKroegraad(loginName, code) {
   return { ok: true, user };
 }
 
-export function resetPreparation() {
+export function resetPreparation(options = {}) {
   return updateState((state) => {
-    if (state.phase !== GAME_PHASE.PRESTART) {
+    if (!options.force && state.phase !== GAME_PHASE.PRESTART) {
       return state;
     }
 
