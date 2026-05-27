@@ -1,7 +1,7 @@
 import { GAME_CONFIG } from "../data/gameConfig.js";
 import { drawCard } from "../data/cards.js";
 import { createTaskForTile, REJECTION_PENALTY } from "../data/tasks.js";
-import { TEAMS, findKroegraad, findTeamByCode, findTeamById } from "../data/teams.js";
+import { TEAMS, findKroegraad, findTeamByCode, findTeamById, findTeamByLogin } from "../data/teams.js";
 import { findTileById } from "../data/tiles.js";
 import { GAME_PHASE, TEAM_STATUS } from "../data/statuses.js";
 import {
@@ -320,6 +320,59 @@ export function startLobbyDemo(teamId = "team_bruine_kroeg") {
   return { ok: true, team };
 }
 
+export function startFinishedDemo(teamId = "team_bruine_kroeg") {
+  const team = findTeamById(teamId);
+  if (!team) {
+    return { ok: false, message: "Onbekend demoteam." };
+  }
+
+  const sessionId = createId();
+  const endedAt = now();
+  const demoPositions = {
+    team_bruine_kroeg: { completedRounds: 2, position: 14, lastRoll: 5 },
+    team_zwarte_pint: { completedRounds: 1, position: 39, lastRoll: 3 },
+    team_witte_batavus: { completedRounds: 2, position: 8, lastRoll: 6 }
+  };
+  const teamEntries = Object.fromEntries(
+    TEAMS.map((item) => {
+      const demo = demoPositions[item.id] ?? { completedRounds: 0, position: GAME_CONFIG.startTileId, lastRoll: null };
+      return [
+        item.id,
+        {
+          ...createTeamState(item),
+          loggedIn: true,
+          activeSessionId: item.id === team.id ? sessionId : `demo_finished_${item.id}`,
+          loggedInAt: endedAt - 30 * 60 * 1000,
+          status: TEAM_STATUS.FINISHED,
+          position: demo.position,
+          currentTileId: demo.position,
+          completedRounds: demo.completedRounds,
+          positionReachedAt: endedAt - demo.position * 1000,
+          normalTurnsUsed: GAME_CONFIG.maxNormalTurns,
+          lastRoll: demo.lastRoll,
+          activePopup: {
+            title: "Spel afgelopen",
+            body: "Kom naar De Tempelier in Nijmegen. De Kroegraad maakt daar de winnaar bekend.",
+            kind: "finished"
+          }
+        }
+      ];
+    })
+  );
+
+  saveState({
+    ...createDefaultState(),
+    phase: GAME_PHASE.RUNNING,
+    countdownStartedAt: endedAt - GAME_CONFIG.countdownSeconds * 1000,
+    gameStartedAt: endedAt - 2 * 60 * 60 * 1000,
+    timerFinishedAt: endedAt,
+    teams: teamEntries
+  });
+  setCurrentSession({ role: "team", teamId: team.id, sessionId, demo: true });
+
+  return { ok: true, team };
+}
+
 export function loginTeam(code) {
   const team = findTeamByCode(code);
   if (!team) {
@@ -327,6 +380,45 @@ export function loginTeam(code) {
       ok: false,
       message: "Deze teamcode herken ik niet. Gebruik BRUINEKROEG, ZWARTEPINT of WITTEBATAVUS."
     };
+  }
+
+  const state = getState();
+  const teamState = state.teams[team.id];
+  if (teamState?.activeSessionId) {
+    return {
+      ok: false,
+      message:
+        "Dit team is al ingelogd. Voor lokaal testen: open opnieuw met ?reset=1. Tijdens de echte avond kan de Kroegraad de sessie vrijgeven."
+    };
+  }
+
+  const sessionId = createId();
+  updateState((draft) => ({
+    ...draft,
+    teams: {
+      ...draft.teams,
+      [team.id]: {
+        ...draft.teams[team.id],
+        loggedIn: true,
+        activeSessionId: sessionId,
+        loggedInAt: draft.teams[team.id].loggedInAt ?? now()
+      }
+    }
+  }));
+
+  setCurrentSession({ role: "team", teamId: team.id, sessionId });
+  return { ok: true, team };
+}
+
+export function loginTeamWithPassword(teamId, password) {
+  const selectedTeam = findTeamById(teamId);
+  if (!selectedTeam) {
+    return { ok: false, message: "Kies eerst een team." };
+  }
+
+  const team = findTeamByLogin(teamId, password);
+  if (!team) {
+    return { ok: false, message: "Verkeerd wachtwoord. Gebruik 0000." };
   }
 
   const state = getState();

@@ -13,7 +13,7 @@ import {
   getState,
   getTeamState,
   loginKroegraad,
-  loginTeam,
+  loginTeamWithPassword,
   rejectTeamTask,
   resetPreparation,
   rollDice,
@@ -21,6 +21,7 @@ import {
   startCountdown,
   startTeamDemo,
   startLobbyDemo,
+  startFinishedDemo,
   submitProofInWhatsapp,
   dismissTeamPopup,
   demoResolveTeamTask,
@@ -46,7 +47,7 @@ const ui = {
 function logoMarkup(compact = false) {
   const imageSrc = compact
     ? "./assets/zuipopoly-banner-normalized.svg"
-    : "./assets/zuipopoly-logo-full.png";
+    : "./assets/zuipopoly-logo-full.svg";
   const imageAlt = compact ? "Zuip-O-Poly" : "Zuip-O-Poly Camping van Eck Nijmegen";
 
   return `
@@ -172,30 +173,48 @@ function renderLoggedOut() {
 
 function renderTeamLogin() {
   return `
-    <form class="panel auth-panel" data-form="team-login">
+    <form class="panel auth-panel team-auth-panel" data-form="team-login">
+      <div class="auth-panel-heading">
+        <p class="eyebrow">Team-login</p>
+        <h2>Kies je team</h2>
+      </div>
+      <div class="team-choice-grid" role="radiogroup" aria-label="Kies je team">
+        ${TEAMS.map((team, index) => `
+          <label class="team-choice-card" style="--team-accent:${team.accent}">
+            <input type="radio" name="teamId" value="${team.id}" ${index === 0 ? "checked" : ""} />
+            ${teamBadge(team)}
+            <span>
+              <strong>${team.name}</strong>
+              <small>${team.colorName}</small>
+            </span>
+          </label>
+        `).join("")}
+      </div>
       <label>
-        Teamcode
-        <input name="teamCode" autocomplete="off" autocapitalize="characters" placeholder="BRUINEKROEG" />
+        Wachtwoord
+        <input name="teamPassword" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Wachtwoord" />
       </label>
       ${button("Team inloggen", "primary", 'type="submit"')}
-      <p class="helper">Geldige teams staan in de configuratie. Teamcodes zijn hoofdlettergevoelig.</p>
     </form>
   `;
 }
 
 function renderKroegraadLogin() {
   return `
-    <form class="panel auth-panel" data-form="kroegraad-login">
+    <form class="panel auth-panel council-auth-panel" data-form="kroegraad-login">
+      <div class="auth-panel-heading">
+        <p class="eyebrow">Kroegraad</p>
+        <h2>Inloggen</h2>
+      </div>
       <label>
         Loginnaam
-        <input name="loginName" autocomplete="username" autocapitalize="characters" placeholder="SWEN" />
+        <input name="loginName" autocomplete="username" autocapitalize="characters" placeholder="Loginnaam" />
       </label>
       <label>
         Code
-        <input name="code" type="password" inputmode="numeric" autocomplete="current-password" placeholder="0805" />
+        <input name="code" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Code" />
       </label>
       ${button("Kroegraad inloggen", "primary", 'type="submit"')}
-      <p class="helper">Beschikbaar: ${KROEGRAAD_USERS.map((user) => user.loginName).join(" / ")}.</p>
     </form>
   `;
 }
@@ -256,16 +275,17 @@ function renderTeamRunning(team, teamState, state) {
   }
 
   const currentTile = findTileById(teamState.currentTileId);
+  const isFinished = teamState.status === TEAM_STATUS.FINISHED;
   app.innerHTML = `
     <section class="screen">
       ${logoMarkup(true)}
       ${teamCard(team, teamState)}
-      ${renderBoardShortcut()}
-      ${renderTurnStrip(teamState)}
+      ${isFinished ? "" : renderBoardShortcut()}
+      ${isFinished ? "" : renderTurnStrip(teamState)}
       ${state.paused ? renderPauseNotice() : ""}
       ${renderActivePlayCard(teamState, team.id, currentTile)}
       ${renderDemoTools(team, teamState)}
-      ${renderTeamTabs()}
+      ${isFinished ? "" : renderTeamTabs()}
     </section>
   `;
 }
@@ -366,10 +386,11 @@ function renderActivePlayCard(teamState, teamId, currentTile) {
 
   if (teamState.status === TEAM_STATUS.FINISHED) {
     return `
-      <section class="panel play-panel status-panel">
+      <section class="panel play-panel status-panel end-panel">
         <p class="eyebrow">Spel afgelopen</p>
-        <h2>Kom naar De Tempelier</h2>
-        <p class="tile-type">De Kroegraad maakt daar de winnaar bekend.</p>
+        <h2>SPEL AFGELOPEN</h2>
+        <p class="end-location">Kom naar De Tempelier</p>
+        <p class="tile-type">Jullie 25 normale dobbelbeurten zitten erop. Kom naar De Tempelier in Nijmegen. De Kroegraad maakt daar de winnaar bekend.</p>
       </section>
     `;
   }
@@ -815,6 +836,17 @@ function render() {
   renderLoggedOut();
 }
 
+function transitionRender() {
+  const currentScreen = app.querySelector(".screen");
+  if (!currentScreen) {
+    render();
+    return;
+  }
+
+  currentScreen.classList.add("is-leaving");
+  window.setTimeout(render, 130);
+}
+
 app.addEventListener("click", (event) => {
   const actionTarget = event.target.closest("[data-action]");
   const action = actionTarget?.dataset.action;
@@ -827,12 +859,12 @@ app.addEventListener("click", (event) => {
 
   if (action === "mode-team") {
     ui.loginMode = "team";
-    render();
+    transitionRender();
   }
 
   if (action === "mode-kroegraad") {
     ui.loginMode = "kroegraad";
-    render();
+    transitionRender();
   }
 
   if (action === "tab-play") {
@@ -945,11 +977,14 @@ app.addEventListener("submit", (event) => {
 
   if (form.dataset.form === "team-login") {
     const formData = new FormData(form);
-    const result = loginTeam(String(formData.get("teamCode") ?? ""));
+    const result = loginTeamWithPassword(
+      String(formData.get("teamId") ?? ""),
+      String(formData.get("teamPassword") ?? "")
+    );
     if (!result.ok) {
       ui.error = result.message;
     }
-    render();
+    transitionRender();
   }
 
   if (form.dataset.form === "kroegraad-login") {
@@ -961,7 +996,7 @@ app.addEventListener("submit", (event) => {
     if (!result.ok) {
       ui.error = result.message;
     }
-    render();
+    transitionRender();
   }
 });
 
@@ -1053,6 +1088,24 @@ function consumeLaunchParams() {
     }
 
     startCountdown();
+  }
+
+  if (params.get("demo") === "finished") {
+    ui.skipRemoteSync = true;
+    ui.demoToolsVisible = false;
+    const view = params.get("as") ?? "bruine";
+    const teamByView = {
+      bruine: "team_bruine_kroeg",
+      zwarte: "team_zwarte_pint",
+      witte: "team_witte_batavus"
+    };
+    const teamId = teamByView[view] ?? "team_bruine_kroeg";
+    startFinishedDemo(teamId);
+
+    if (view === "lars" || view === "swen") {
+      clearCurrentSession();
+      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
+    }
   }
 
   if (shouldCleanUrl) {

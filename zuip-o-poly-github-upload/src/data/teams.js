@@ -6,6 +6,7 @@ export const TEAMS = [
     colorName: "Bruin",
     accent: "#8b5a2b",
     code: "BRUINEKROEG",
+    password: "0000",
     kroegraadId: "LARS"
   },
   {
@@ -15,6 +16,7 @@ export const TEAMS = [
     colorName: "Zwart",
     accent: "#f5f5f5",
     code: "ZWARTEPINT",
+    password: "0000",
     kroegraadId: "SWEN"
   },
   {
@@ -24,6 +26,7 @@ export const TEAMS = [
     colorName: "Wit",
     accent: "#e8edf3",
     code: "WITTEBATAVUS",
+    password: "0000",
     kroegraadId: "LARS"
   }
 ];
@@ -50,6 +53,12 @@ export function findTeamByCode(code) {
 
 export function findTeamById(teamId) {
   return TEAMS.find((team) => team.id === teamId);
+}
+
+export function findTeamByLogin(teamId, password) {
+  return TEAMS.find(
+    (team) => team.id === teamId && team.password === String(password ?? "").trim()
+  );
 }
 
 export function findKroegraad(loginName, code) {
