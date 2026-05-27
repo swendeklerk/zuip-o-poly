@@ -1,6 +1,6 @@
-const rollDurationMs = 900;
-const tickMs = 70;
-let activeRollTeamId = null;
+const rollDurationMs = 950;
+const tickMs = 72;
+let activeRoll = null;
 
 function randomFace() {
   return Math.floor(Math.random() * 6) + 1;
@@ -9,6 +9,14 @@ function randomFace() {
 function setDieFace(die, face) {
   die.classList.remove("die-1", "die-2", "die-3", "die-4", "die-5", "die-6");
   die.classList.add(`die-${face}`);
+}
+
+function findRollElements(button) {
+  const panel = button.closest(".dice-panel");
+  return {
+    panel,
+    die: panel?.querySelector(".die")
+  };
 }
 
 document.addEventListener(
@@ -24,11 +32,8 @@ document.addEventListener(
       return;
     }
 
-    const panel = button.closest(".dice-panel");
-    const die = panel?.querySelector(".die");
-    const teamId = button.dataset.teamId;
-
-    if (!panel || !die || activeRollTeamId) {
+    const { panel, die } = findRollElements(button);
+    if (!panel || !die || activeRoll) {
       return;
     }
 
@@ -36,7 +41,7 @@ document.addEventListener(
     event.stopPropagation();
     event.stopImmediatePropagation();
 
-    activeRollTeamId = teamId;
+    activeRoll = button;
     const originalText = button.textContent;
     button.textContent = "Rollen...";
     button.disabled = true;
@@ -49,21 +54,18 @@ document.addEventListener(
 
     window.setTimeout(() => {
       window.clearInterval(interval);
+      setDieFace(die, randomFace());
       panel.classList.remove("is-rolling");
       die.classList.remove("is-rolling");
 
-      const currentButton = document.querySelector(
-        `[data-action="roll-dice"][data-team-id="${teamId}"]`
-      );
-
-      if (currentButton) {
-        currentButton.disabled = false;
-        currentButton.textContent = originalText;
-        currentButton.dataset.rollAnimationReady = "true";
-        currentButton.click();
+      if (button.isConnected) {
+        button.disabled = false;
+        button.textContent = originalText;
+        button.dataset.rollAnimationReady = "true";
+        button.click();
       }
 
-      activeRollTeamId = null;
+      activeRoll = null;
     }, rollDurationMs);
   },
   true
