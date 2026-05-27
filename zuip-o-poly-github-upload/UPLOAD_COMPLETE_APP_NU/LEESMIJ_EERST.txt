@@ -1,0 +1,15 @@
+Upload deze map naar GitHub:
+
+UPLOAD_COMPLETE_APP_NU\zuip-o-poly-github-upload
+
+In GitHub moet deze map in de root van de repo staan.
+Vercel Root Directory moet blijven:
+
+zuip-o-poly-github-upload
+
+Niet uploaden of aanmaken:
+- config.js
+- dist
+- oude UPDATE_* mappen
+
+Na upload naar GitHub start Vercel normaal automatisch een nieuwe deploy.
