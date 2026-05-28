@@ -1,62 +1,57 @@
-const FIXED_TASKS_BY_TILE_ID = {
-  5: "Het team neemt een grote fles ICE. Bewijs via WhatsApp. Na goedkeuring mag het team verder.",
-  11: "Jullie zijn op bezoek in de cel. Geen paniek, jullie zitten nog niet vast. Maak een foto of korte video waarop jullie zo overtuigend mogelijk doen alsof een teamlid net is opgesloten en de rest op bezoek komt. Bewijs via WhatsApp. Na goedkeuring mag het team opnieuw gooien.",
-  13: "Jullie hebben niet genoeg energie. Koop voor ieder actief teamlid één Red Bull en shotgun deze. Bewijs via WhatsApp.",
-  16: "Wisselstation: kies later een ander team om mee te wisselen. De volledige keuzeflow bouwen we in de volgende laag. Voor nu: stuur bewijs via WhatsApp en wacht op de Kroegraad.",
-  29: "Koop een flesje water en gooi deze volledig leeg over één teamgenoot. Bewijs via WhatsApp.",
-  31: "Ga direct naar de echte cel. Jullie worden naar vakje 11 gezet en moeten eerst wachten. Daarna verschijnt de Keizer Karelplein-opdracht.",
-  36: "Wisselstation: kies later een ander team om mee te wisselen. De volledige keuzeflow bouwen we in de volgende laag. Voor nu: stuur bewijs via WhatsApp en wacht op de Kroegraad.",
-  39: "Fotografeer 5 witte fietsen. De fietsen moeten duidelijk herkenbaar zijn. Bewijs via WhatsApp."
-};
+import { CAFE_VAN_OUDS_WHEEL_URL, DOCK17_DRINKS, getTileAssignment } from "./tileAssignments.js";
 
 export const REJECTION_PENALTY =
   "Niet door de Kroegraad gekomen. Twee teamleden trekken als straf een koolzuurhoudend drankje van minimaal 330 ml. Daarna doen jullie dezelfde opdracht opnieuw.";
 
-const SNACK_TASKS = [
-  "Koop evenveel snacks als actieve teamleden en eet alles op. Bewijs via WhatsApp.",
-  "Koop voor ieder actief teamlid iets zouts. Alles moet op. Bewijs via WhatsApp.",
-  "Koop voor ieder actief teamlid een snack die je niet normaal zou kiezen. Bewijs via WhatsApp."
-];
+function cleanPlaceholder(value) {
+  const text = String(value ?? "").trim();
+  return text === "-" ? "" : text;
+}
 
 export function createTaskForTile(tile) {
-  const fixedText = FIXED_TASKS_BY_TILE_ID[tile.id];
-  if (fixedText) {
-    return {
-      title: tile.name,
-      body: fixedText,
-      placeholder: false
-    };
-  }
+  const assignment = getTileAssignment(tile.id);
 
-  if (tile.type === "Snackstation") {
-    return {
-      title: "Snackstation",
-      body: SNACK_TASKS[Math.floor(Math.random() * SNACK_TASKS.length)],
-      placeholder: false,
-      presentation: "snack"
-    };
-  }
+  if (assignment) {
+    const teamText = cleanPlaceholder(assignment.teamText);
+    const popup = cleanPlaceholder(assignment.popup);
+    const kroegraadSummary = cleanPlaceholder(assignment.kroegraadSummary);
+    const rules = cleanPlaceholder(assignment.rules);
+    const location = cleanPlaceholder(assignment.location);
+    const safePopup =
+      tile.id === 31
+        ? "Jullie zitten in de cel. Wacht 4 minuten. Daarna krijgen jullie de Keizer Karelplein-opdracht."
+        : popup;
 
-  if (tile.id === 21) {
     return {
-      title: "Vrij Parkeren",
-      body: "Loop naar de aangewezen parkeerplek. Maak daar een bewijsfoto en stuur die in WhatsApp.",
-      placeholder: true,
-      presentation: "parking"
-    };
-  }
-
-  if (tile.type === "Straatvak") {
-    return {
-      title: tile.name,
-      body: `Placeholder-opdracht voor ${tile.name}. Stuur bewijs in WhatsApp en meld het daarna in de app.`,
-      placeholder: true
+      title: location || tile.name,
+      tileName: tile.name,
+      location,
+      popup: safePopup,
+      body:
+        teamText ||
+        `${tile.type} is nog niet verder ingevuld. Meld dit even bij de Kroegraad.`,
+      reviewBody: kroegraadSummary || teamText || "Geen samenvatting ingevuld.",
+      reviewExtra:
+        tile.id === 32
+          ? `Dock17 lijst: ${DOCK17_DRINKS.map((item) => `${item.id}. ${item.drink}`).join(" | ")}`
+          : "",
+      actionUrl: tile.id === 33 ? CAFE_VAN_OUDS_WHEEL_URL : "",
+      actionLabel: tile.id === 33 ? "Open Rad van Bier en Vertier" : "",
+      rules,
+      placeholder: !teamText,
+      presentation: tile.type === "Snackstation" ? "snack" : tile.id === 21 ? "parking" : "task"
     };
   }
 
   return {
     title: tile.name,
-    body: `${tile.type} is nog een placeholder in deze fase. Voer een simpele testopdracht uit, stuur bewijs in WhatsApp en meld het daarna in de app.`,
-    placeholder: true
+    tileName: tile.name,
+    location: "",
+    popup: "",
+    body: `${tile.type} is nog niet verder ingevuld. Meld dit even bij de Kroegraad.`,
+    reviewBody: "Geen samenvatting ingevuld.",
+    rules: "",
+    placeholder: true,
+    presentation: "task"
   };
 }

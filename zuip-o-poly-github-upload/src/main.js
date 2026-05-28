@@ -12,6 +12,7 @@ import {
   getCurrentSession,
   getState,
   getTeamState,
+  getTeamCountdownSeconds,
   loginKroegraad,
   loginTeamWithPassword,
   rejectTeamTask,
@@ -30,6 +31,11 @@ import {
   demoDrawCard,
   demoDrawTeamChoiceCard,
   demoEnterWisselstation,
+  demoEnterDock17,
+  demoEnterCafeVanOuds,
+  updateDock17Choice,
+  addDock17Player,
+  revealDock17Choices,
   useSavedPowerUp,
   initializeRemoteSync,
   togglePause,
@@ -45,8 +51,25 @@ const ui = {
   error: "",
   notice: "",
   demoToolsVisible: false,
-  skipRemoteSync: false
+  skipRemoteSync: false,
+  syncMode: "connecting"
 };
+
+function isSyncBlocking() {
+  return !ui.skipRemoteSync && ui.syncMode === "connecting";
+}
+
+function renderSyncWarning() {
+  if (ui.skipRemoteSync || ui.syncMode !== "local") {
+    return "";
+  }
+
+  return `
+    <div class="sync-warning">
+      Niet live verbonden. Deze telefoon draait lokaal.
+    </div>
+  `;
+}
 
 function logoMarkup(compact = false) {
   const imageSrc = compact
@@ -77,6 +100,7 @@ function logoMarkup(compact = false) {
         }
       </div>
     </div>
+    ${renderSyncWarning()}
   `;
 }
 
@@ -92,6 +116,14 @@ function teamBadge(team) {
   `;
 }
 
+function getSavedPowerUpsForUi(teamState) {
+  return teamState.savedPowerUps?.length
+    ? teamState.savedPowerUps
+    : teamState.savedPowerUp
+      ? [teamState.savedPowerUp]
+      : [];
+}
+
 function getTileName(tileId) {
   return findTileById(tileId)?.name ?? "Onbekend vak";
 }
@@ -102,6 +134,13 @@ function getRoundLabel(teamState) {
 
 function getTurnLabel(teamState) {
   return `Beurt ${teamState.normalTurnsUsed ?? 0} van ${GAME_CONFIG.maxNormalTurns}`;
+}
+
+function formatShortTimer(seconds) {
+  const safeSeconds = Math.max(Number(seconds ?? 0), 0);
+  const minutes = Math.floor(safeSeconds / 60);
+  const rest = safeSeconds % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
 function teamCard(team, teamState, extra = "") {
@@ -138,10 +177,10 @@ function teamCard(team, teamState, extra = "") {
         </div>
       </dl>
       ${
-        teamState.savedPowerUp
+        getSavedPowerUpsForUi(teamState).length
           ? `<div class="powerup-badge">
-              <span>Power-up</span>
-              <strong>${teamState.savedPowerUp.label}</strong>
+              <span>Power-ups</span>
+              <strong>${getSavedPowerUpsForUi(teamState).map((powerUp) => powerUp.label).join(" + ")}</strong>
             </div>`
           : ""
       }
@@ -194,7 +233,12 @@ function renderTeamLogin() {
         Wachtwoord
         <input name="teamPassword" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Wachtwoord" />
       </label>
-      ${button("Team inloggen", "primary", 'type="submit"')}
+      ${
+        isSyncBlocking()
+          ? `<p class="form-message">Live verbinding laden...</p>`
+          : ""
+      }
+      ${button("Team inloggen", "primary", `type="submit" ${isSyncBlocking() ? "disabled" : ""}`)}
     </form>
   `;
 }
@@ -214,7 +258,12 @@ function renderKroegraadLogin() {
         Code
         <input name="code" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Code" />
       </label>
-      ${button("Kroegraad inloggen", "primary", 'type="submit"')}
+      ${
+        isSyncBlocking()
+          ? `<p class="form-message">Live verbinding laden...</p>`
+          : ""
+      }
+      ${button("Kroegraad inloggen", "primary", `type="submit" ${isSyncBlocking() ? "disabled" : ""}`)}
     </form>
   `;
 }
@@ -327,12 +376,13 @@ function renderTeamPopup(teamState, teamId) {
     chance: "Kans",
     fund: "Algemeen Fonds",
     swap: "Wisselstation",
+    start: "Grote Markt",
     snack: "Snackstation",
     parking: "Vrij Parkeren",
     rejected: "Afgekeurd",
     task: "Nieuwe opdracht"
   };
-  const needsTeamChoice = ["team_choice_wait", "team_choice_move", "swap_positions", "wisselstation"].includes(
+  const needsTeamChoice = ["team_choice_wait", "team_choice_move", "swap_positions", "wisselstation", "start_bonus"].includes(
     teamState.currentTask?.effectType
   ) && teamState.activePopup.cardId === teamState.currentTask?.cardId;
 
@@ -386,7 +436,7 @@ function renderTeamChoiceButtons(teamId) {
           const protectedTeam =
             teamState.status === TEAM_STATUS.IN_JAIL ||
             teamState.status === TEAM_STATUS.FINISHED ||
-            teamState.savedPowerUp?.type === "shield";
+            getSavedPowerUpsForUi(teamState).some((powerUp) => powerUp.type === "shield");
           const label = protectedTeam ? `${team.name} beschermd` : team.name;
 
           return `<button
@@ -464,24 +514,91 @@ function renderActivePlayCard(teamState, teamId, currentTile) {
       <h2>${currentTile?.name ?? "Onbekend vak"}</h2>
       <p class="tile-type">${currentTile?.type ?? ""}</p>
       ${renderTask(teamState)}
+      ${renderSpecialTaskFlow(teamState, teamId)}
       ${renderPowerUpPanel(teamState, teamId)}
       ${renderActionButton(teamState, teamId)}
     </section>
   `;
 }
 
+function renderSpecialTaskFlow(teamState, teamId) {
+  if (teamState.currentTask?.specialFlow === "dock17") {
+    return renderDock17Flow(teamState, teamId);
+  }
+
+  return "";
+}
+
+function renderDock17Flow(teamState, teamId) {
+  const task = teamState.currentTask;
+  const allChosen = task.dock17Choices.every((choice) => choice.number);
+
+  return `
+    <section class="special-flow dock17-flow">
+      <div class="special-flow-header">
+        <span>Dock17 reveal</span>
+        <strong>${task.dock17Choices.length} spelers</strong>
+      </div>
+      <div class="dock17-player-list">
+        ${task.dock17Choices
+          .map((choice) => `
+            <label class="dock17-player">
+              <span>${choice.name}</span>
+              ${
+                task.dock17Revealed
+                  ? `<strong>${choice.number} = ${choice.drink}</strong>`
+                  : `<select data-action="dock17-choice" data-team-id="${teamId}" data-choice-id="${choice.id}">
+                      <option value="">Kies</option>
+                      ${Array.from({ length: 17 }, (_, index) => {
+                        const number = index + 1;
+                        return `<option value="${number}" ${choice.number === number ? "selected" : ""}>${number}</option>`;
+                      }).join("")}
+                    </select>`
+              }
+            </label>
+          `)
+          .join("")}
+      </div>
+      ${
+        task.dock17Revealed
+          ? `<p class="dock17-result-note">Uitslag staat klaar voor de Kroegraad. Stuur bewijs via WhatsApp.</p>`
+          : `<div class="dock17-actions">
+              ${button("+ teamlid", "ghost", `data-action="dock17-add-player" data-team-id="${teamId}"`)}
+              ${button("Onthul drankjes", "primary", `data-action="dock17-reveal" data-team-id="${teamId}" ${allChosen ? "" : "disabled"}`)}
+            </div>`
+      }
+    </section>
+  `;
+}
+
 function renderPowerUpPanel(teamState, teamId) {
-  if (!teamState.savedPowerUp) {
+  const powerUps = getSavedPowerUpsForUi(teamState);
+  if (!powerUps.length) {
     return "";
   }
 
   return `
     <section class="powerup-panel">
-      <div>
-        <span>Power-up klaar</span>
-        <strong>${teamState.savedPowerUp.label}</strong>
+      <div class="powerup-panel-header">
+        <span>Power-ups klaar</span>
+        <strong>${powerUps.length}</strong>
       </div>
-      ${button("Gebruik power-up", "ghost", `data-action="use-powerup" data-team-id="${teamId}"`)}
+      <div class="powerup-list">
+        ${powerUps
+          .map((powerUp) => `
+            <button
+              class="powerup-use-button"
+              data-action="use-powerup"
+              data-team-id="${teamId}"
+              data-powerup-id="${powerUp.id}"
+              type="button"
+            >
+              <span>${powerUp.label}</span>
+              <strong>Gebruiken</strong>
+            </button>
+          `)
+          .join("")}
+      </div>
     </section>
   `;
 }
@@ -602,14 +719,18 @@ function renderDemoTools(team, teamState) {
       </div>
       <div class="demo-card-actions">
         ${button("Test Wisselstation", "ghost", `data-action="demo-wisselstation" data-team-id="${team.id}"`)}
+        ${button("Test Dock17", "ghost", `data-action="demo-dock17" data-team-id="${team.id}"`)}
+      </div>
+      <div class="demo-card-actions">
+        ${button("Test Van Ouds", "ghost", `data-action="demo-van-ouds" data-team-id="${team.id}"`)}
         ${button("Einddemo", "ghost", `data-action="demo-finished" data-team-id="${team.id}"`)}
       </div>
       <div class="demo-card-actions">
+        ${button("Lobby demo", "ghost", 'data-action="demo-open-lobby"')}
         ${button("Naar Lars", "ghost", 'data-action="demo-open-lars"')}
         ${button("Naar Swen", "ghost", 'data-action="demo-open-swen"')}
       </div>
       <div class="demo-card-actions">
-        ${button("Lobby demo", "ghost", 'data-action="demo-open-lobby"')}
         ${button("Reset test", "ghost", 'data-action="start-team-demo"')}
       </div>
       <div class="review-actions">
@@ -639,8 +760,18 @@ function renderTask(teamState) {
 
   return `
     <article class="task-card ${teamState.currentTask.placeholder ? "is-placeholder" : ""}">
+      ${
+        teamState.currentTask.location
+          ? `<span class="task-location">${teamState.currentTask.location}</span>`
+          : ""
+      }
       <h3>${teamState.currentTask.title}</h3>
       <p>${teamState.currentTask.body}</p>
+      ${
+        teamState.currentTask.actionUrl
+          ? `<a class="task-link-button" href="${teamState.currentTask.actionUrl}" target="_blank" rel="noopener noreferrer">${teamState.currentTask.actionLabel ?? "Open link"}</a>`
+          : ""
+      }
       ${
         teamState.rejectionPenalty
           ? `<p class="penalty">${teamState.rejectionPenalty}</p>`
@@ -684,6 +815,10 @@ function renderActionButton(teamState, teamId) {
   }
 
   if (teamState.status === TEAM_STATUS.TASK_ACTIVE || teamState.status === TEAM_STATUS.REJECTED) {
+    if (teamState.currentTask?.specialFlow === "dock17" && !teamState.currentTask.dock17Revealed) {
+      return button("Onthul eerst de drankjes", "disabled", "disabled");
+    }
+
     return button("Bewijs staat in WhatsApp", "primary proof-button", `data-action="submit-proof" ${teamAttr}`);
   }
 
@@ -696,11 +831,13 @@ function renderActionButton(teamState, teamId) {
   }
 
   if (teamState.status === TEAM_STATUS.IN_JAIL) {
-    return button("Celstraf: --:--", "disabled", "disabled");
+    const remaining = getTeamCountdownSeconds(teamState, "jailUntil");
+    return button(`Celstraf: ${formatShortTimer(remaining ?? 0)}`, "disabled", 'disabled data-live-team-timer');
   }
 
   if (teamState.status === TEAM_STATUS.WAITING_SWAP) {
-    return button("Wachten: --:--", "disabled", "disabled");
+    const remaining = getTeamCountdownSeconds(teamState, "waitUntil");
+    return button(`Wachten: ${formatShortTimer(remaining ?? 0)}`, "disabled", 'disabled data-live-team-timer');
   }
 
   if (teamState.status === TEAM_STATUS.PAUSED) {
@@ -860,7 +997,17 @@ function renderCouncilTeamCard(team, teamState, focus = false) {
             <article class="task-card review-task">
               <span class="review-label">Opdracht</span>
               <h3>${teamState.currentTask.title}</h3>
-              <p>${teamState.currentTask.body}</p>
+              <p>${teamState.currentTask.reviewBody ?? teamState.currentTask.body}</p>
+              ${
+                teamState.currentTask.rules
+                  ? `<p class="review-rules">${teamState.currentTask.rules}</p>`
+                  : ""
+              }
+              ${
+                teamState.currentTask.reviewExtra
+                  ? `<p class="review-extra">${teamState.currentTask.reviewExtra}</p>`
+                  : ""
+              }
             </article>
             <div class="review-actions">
               ${button("Goedkeuren", "approve", `data-action="approve-task" data-team-id="${team.id}"`)}
@@ -1062,6 +1209,30 @@ app.addEventListener("click", (event) => {
     render();
   }
 
+  if (action === "demo-dock17") {
+    demoEnterDock17(actionTarget.dataset.teamId);
+    render();
+  }
+
+  if (action === "demo-van-ouds") {
+    demoEnterCafeVanOuds(actionTarget.dataset.teamId);
+    render();
+  }
+
+  if (action === "dock17-add-player") {
+    addDock17Player(actionTarget.dataset.teamId);
+    render();
+  }
+
+  if (action === "dock17-reveal") {
+    actionTarget.disabled = true;
+    actionTarget.closest(".dock17-flow")?.classList.add("is-revealing");
+    window.setTimeout(() => {
+      revealDock17Choices(actionTarget.dataset.teamId);
+      render();
+    }, 850);
+  }
+
   if (action === "demo-open-lars") {
     clearCurrentSession();
     loginKroegraad("LARS", "0311");
@@ -1091,10 +1262,20 @@ app.addEventListener("click", (event) => {
     actionTarget.disabled = true;
     powerupPanel?.classList.add("is-activating");
     window.setTimeout(() => {
-      useSavedPowerUp(actionTarget.dataset.teamId);
+      useSavedPowerUp(actionTarget.dataset.teamId, actionTarget.dataset.powerupId);
       render();
     }, 900);
   }
+});
+
+app.addEventListener("change", (event) => {
+  const target = event.target;
+  if (target.dataset.action !== "dock17-choice") {
+    return;
+  }
+
+  updateDock17Choice(target.dataset.teamId, target.dataset.choiceId, target.value);
+  render();
 });
 
 app.addEventListener("submit", (event) => {
@@ -1244,14 +1425,17 @@ function consumeLaunchParams() {
 consumeLaunchParams();
 subscribe(render);
 if (ui.skipRemoteSync) {
+  ui.syncMode = "demo";
   console.info("Zuip-O-Poly draait in lokale demo-modus.");
 } else {
   initializeRemoteSync().then((result) => {
+    ui.syncMode = result.mode;
     if (result.mode === "remote") {
       console.info("Zuip-O-Poly draait met Supabase realtime sync.");
     } else {
       console.info("Zuip-O-Poly draait lokaal. Supabase is nog niet actief.");
     }
+    render();
   });
 }
 setInterval(() => {
@@ -1267,6 +1451,18 @@ function updateLiveClockText() {
     countdownNodes.forEach((node) => {
       node.textContent = remaining;
     });
+  }
+
+  const session = getCurrentSession();
+  if (session?.role === "team") {
+    const teamState = getTeamState(session.teamId, state);
+    const timerNode = document.querySelector("[data-live-team-timer]");
+    if (timerNode && teamState?.status === TEAM_STATUS.IN_JAIL) {
+      timerNode.textContent = `Celstraf: ${formatShortTimer(getTeamCountdownSeconds(teamState, "jailUntil") ?? 0)}`;
+    }
+    if (timerNode && teamState?.status === TEAM_STATUS.WAITING_SWAP) {
+      timerNode.textContent = `Wachten: ${formatShortTimer(getTeamCountdownSeconds(teamState, "waitUntil") ?? 0)}`;
+    }
   }
 
 }

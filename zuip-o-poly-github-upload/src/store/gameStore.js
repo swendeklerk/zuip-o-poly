@@ -1,5 +1,6 @@
 import { GAME_CONFIG } from "../data/gameConfig.js";
 import { CARD_DECKS, drawCard } from "../data/cards.js";
+import { DOCK17_DRINKS } from "../data/tileAssignments.js";
 import { createTaskForTile, REJECTION_PENALTY } from "../data/tasks.js";
 import { TEAMS, findKroegraad, findTeamByCode, findTeamById, findTeamByLogin } from "../data/teams.js";
 import { findTileById } from "../data/tiles.js";
@@ -53,11 +54,13 @@ function createTeamState(team) {
     currentTask: null,
     activePopup: null,
     savedPowerUp: null,
+    savedPowerUps: [],
     rejectionPenalty: null,
     proofInWhatsapp: false,
     pendingBonusRoll: false,
     jailUntil: null,
     waitUntil: null,
+    activePlayers: team.defaultActivePlayers ?? team.players,
     lastStreetTileId: null,
     lastMove: null
   };
@@ -573,6 +576,15 @@ export function getGameRemainingSeconds(state = getState()) {
   return Math.max(GAME_CONFIG.gameDurationSeconds - elapsedSeconds, 0);
 }
 
+export function getTeamCountdownSeconds(teamState, fieldName) {
+  const targetTime = teamState?.[fieldName];
+  if (!targetTime) {
+    return null;
+  }
+
+  return Math.max(Math.ceil((targetTime - now()) / 1000), 0);
+}
+
 export function isGameTimeUp(state = getState()) {
   return state.phase === GAME_PHASE.RUNNING && Boolean(state.timerFinishedAt);
 }
@@ -612,8 +624,8 @@ function getApprovedNextStatus(state, teamState) {
 
 function normalizeBoardPosition(rawPosition) {
   return {
-    position: ((rawPosition - 1) % 40) + 1,
-    roundsGained: Math.floor((rawPosition - 1) / 40)
+    position: ((((rawPosition - 1) % 40) + 40) % 40) + 1,
+    roundsGained: rawPosition > 40 ? Math.floor((rawPosition - 1) / 40) : 0
   };
 }
 
@@ -632,12 +644,73 @@ function createTaskFromCard(card, presentation) {
   };
 }
 
+function getSavedPowerUps(teamState) {
+  return teamState.savedPowerUps?.length
+    ? teamState.savedPowerUps
+    : teamState.savedPowerUp
+      ? [teamState.savedPowerUp]
+      : [];
+}
+
+function addSavedPowerUp(teamState, powerUp) {
+  return [...getSavedPowerUps(teamState), powerUp];
+}
+
+function getActivePlayers(teamState) {
+  const team = findTeamById(teamState.teamId);
+  return teamState.activePlayers?.length ? teamState.activePlayers : (team?.defaultActivePlayers ?? team?.players ?? []);
+}
+
+function getNextActivePlayerName(teamState, nextIndex) {
+  const team = findTeamById(teamState.teamId);
+  const activePlayers = getActivePlayers(teamState);
+  const knownPlayer = team?.players?.find((name) => !activePlayers.includes(name));
+  return knownPlayer ?? `Teamlid ${nextIndex}`;
+}
+
+function withDock17Meta(task, teamState) {
+  if (teamState.currentTileId !== 32) {
+    return task;
+  }
+
+  return {
+    ...task,
+    specialFlow: "dock17",
+    dock17Choices: getActivePlayers(teamState).map((name, index) => ({
+      id: `player_${index + 1}`,
+      name,
+      number: null,
+      drink: ""
+    })),
+    dock17Revealed: false
+  };
+}
+
+function createStartBonusTask() {
+  return {
+    title: "Grote Markt Nijmegen",
+    tileName: "Grote Markt Nijmegen",
+    location: "Grote Markt",
+    popup: "Bordje rond! Klasse. En als je langs Start komt, hoor daar uiteraard een beloning bij...",
+    body:
+      "Kies een team. Bel het team dat je gekozen hebt en meld dit aan de Kroegraad.",
+    reviewBody: "Team deelt een drankje uit aan elke actieve speler van een gekozen actief team.",
+    rules: "Bel het gekozen team en meld de keuze aan de Kroegraad.",
+    placeholder: false,
+    presentation: "start",
+    cardId: "grote-markt-bonus",
+    effectType: "start_bonus"
+  };
+}
+
 function moveTeamByDelta(state, teamId, delta, options = {}) {
   const teamState = state.teams[teamId];
   const rawPosition = teamState.position + delta;
   const { position, roundsGained } = normalizeBoardPosition(rawPosition);
   const tile = findTileById(position);
-  const task = createTaskFromTileBehavior(tile);
+  const crossedStart = roundsGained > 0 || position === 1;
+  const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile);
+  const task = withDock17Meta(baseTask, { ...teamState, currentTileId: position });
   const movedAt = now();
 
   const movedState = {
@@ -651,7 +724,15 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
         completedRounds: teamState.completedRounds + roundsGained,
         positionReachedAt: movedAt,
         currentTask: task,
-        activePopup: options.keepPopup ? teamState.activePopup : null,
+        activePopup: crossedStart
+          ? {
+              title: task.title,
+              body: task.popup,
+              kind: task.presentation,
+              stage: "detail",
+              cardId: task.cardId
+            }
+          : options.keepPopup ? teamState.activePopup : null,
         rejectionPenalty: null,
         proofInWhatsapp: false,
         lastStreetTileId: tile.type === "Straatvak" ? position : teamState.lastStreetTileId,
@@ -660,7 +741,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
           from: teamState.position,
           to: position,
           roundsGained,
-          crossedStart: roundsGained > 0,
+          crossedStart,
           tileName: tile.name,
           movedAt,
           source: options.source ?? "card"
@@ -680,7 +761,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
 function moveTeamToTile(state, teamId, position, options = {}) {
   const teamState = state.teams[teamId];
   const tile = findTileById(position);
-  const task = createTaskFromTileBehavior(tile);
+  const task = withDock17Meta(createTaskFromTileBehavior(tile), { ...teamState, currentTileId: position });
   const movedAt = now();
 
   return {
@@ -813,13 +894,15 @@ function applyImmediateTaskEffect(state, teamId) {
         ...state.teams,
         [teamId]: {
           ...teamState,
-          savedPowerUp: {
-            id: task.cardId,
+          savedPowerUp: null,
+          savedPowerUps: addSavedPowerUp(teamState, {
+            id: `${task.cardId}-${now()}`,
+            cardId: task.cardId,
             title: task.title,
             label: task.powerUpLabel ?? task.title,
             body: task.body,
             type: task.savedPowerUpType
-          },
+          }),
           proofInWhatsapp: false,
           status: TEAM_STATUS.APPROVED
         }
@@ -834,7 +917,7 @@ function isProtectedFromTeamChoice(teamState) {
   return (
     teamState?.status === TEAM_STATUS.IN_JAIL ||
     teamState?.status === TEAM_STATUS.FINISHED ||
-    teamState?.savedPowerUp?.type === "shield"
+    getSavedPowerUps(teamState).some((powerUp) => powerUp.type === "shield")
   );
 }
 
@@ -867,7 +950,9 @@ export function rollDice(teamId) {
     const { position: nextPosition, roundsGained } = normalizeBoardPosition(rawPosition);
     const completedRounds = teamState.completedRounds + roundsGained;
     const tile = findTileById(nextPosition);
-    const task = createTaskFromTileBehavior(tile);
+    const crossedStart = roundsGained > 0 || nextPosition === 1;
+    const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile);
+    const task = withDock17Meta(baseTask, { ...teamState, currentTileId: nextPosition });
     const movedAt = now();
     const nextState = {
       ...state,
@@ -883,10 +968,10 @@ export function rollDice(teamId) {
           pendingBonusRoll: false,
           lastRoll: roll,
           currentTask: task,
-          activePopup: ["chance", "fund", "swap"].includes(task.presentation)
+          activePopup: task.popup || ["chance", "fund", "swap", "start"].includes(task.presentation)
             ? {
                 title: task.title,
-                body: task.body,
+                body: task.popup || task.body,
                 kind: task.presentation,
                 stage: "intro",
                 cardId: task.cardId
@@ -900,7 +985,7 @@ export function rollDice(teamId) {
             from: teamState.position,
             to: nextPosition,
             roundsGained,
-            crossedStart: roundsGained > 0,
+            crossedStart,
             tileName: tile.name,
             movedAt
           },
@@ -925,10 +1010,10 @@ function createTaskFromTileBehavior(tile) {
   }
 
   if (tile.type === "Wisselstation") {
+    const task = createTaskForTile(tile);
     return {
+      ...task,
       title: "Wisselstation",
-      body:
-        "Kies een ander team om mee te wisselen. Het gekozen team stopt direct met de huidige opdracht, krijgt geen nieuwe opdracht en moet 3 minuten wachten. Jullie mogen daarna direct opnieuw gooien.",
       placeholder: false,
       presentation: "swap",
       cardId: `wisselstation-${tile.id}`,
@@ -1089,6 +1174,38 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
       };
     }
 
+    if (task.effectType === "start_bonus") {
+      const targetName = findTeamById(targetTeamId)?.name ?? "het gekozen team";
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            currentTask: null,
+            proofInWhatsapp: false,
+            rejectionPenalty: null,
+            status: getApprovedNextStatus(state, teamState),
+            activePopup: {
+              title: "Grote Markt gemeld",
+              body: `Bel ${targetName} en meld aan de Kroegraad dat jullie dit team hebben gekozen voor de Grote Markt-beloning.`,
+              kind: "start",
+              stage: "detail"
+            }
+          },
+          [targetTeamId]: {
+            ...targetState,
+            activePopup: {
+              title: "Grote Markt-beloning",
+              body: "Een ander team heeft jullie gekozen voor de Grote Markt-beloning. Wacht op hun belletje en volg wat de Kroegraad zegt.",
+              kind: "start",
+              stage: "detail"
+            }
+          }
+        }
+      };
+    }
+
     if (task.effectType === "wisselstation") {
       const waitUntil = now() + (task.waitSeconds ?? 180) * 1000;
       const swappedAt = now();
@@ -1206,6 +1323,10 @@ export function submitProofInWhatsapp(teamId) {
       return state;
     }
 
+    if (teamState.currentTask?.specialFlow === "dock17" && !teamState.currentTask.dock17Revealed) {
+      return state;
+    }
+
     return {
       ...state,
       teams: {
@@ -1229,17 +1350,6 @@ export function approveTeamTask(kroegraadId, teamId) {
       return state;
     }
 
-    const approvedPowerUp =
-      teamState.currentTask?.presentation === "fund" &&
-      teamState.currentTask?.effectType === "saved_powerup"
-        ? {
-            id: teamState.currentTask.cardId,
-            title: teamState.currentTask.title,
-            label: teamState.currentTask.powerUpLabel ?? teamState.currentTask.title,
-            body: teamState.currentTask.body
-          }
-        : teamState.savedPowerUp;
-
     return {
       ...state,
       teams: {
@@ -1248,7 +1358,6 @@ export function approveTeamTask(kroegraadId, teamId) {
           ...teamState,
           proofInWhatsapp: false,
           activePopup: null,
-          savedPowerUp: approvedPowerUp,
           rejectionPenalty: null,
           status: getApprovedNextStatus(state, teamState)
         }
@@ -1475,14 +1584,201 @@ export function demoEnterWisselstation(teamId) {
   });
 }
 
-export function useSavedPowerUp(teamId) {
+export function demoEnterDock17(teamId) {
   return updateState((state) => {
     const teamState = state.teams[teamId];
-    if (!teamState?.savedPowerUp) {
+    if (!teamState) {
       return state;
     }
 
-    if (teamState.savedPowerUp.type === "skip_task") {
+    const tile = findTileById(32);
+    const task = withDock17Meta(createTaskFromTileBehavior(tile), {
+      ...teamState,
+      currentTileId: 32
+    });
+
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          position: 32,
+          currentTileId: 32,
+          positionReachedAt: now(),
+          currentTask: task,
+          proofInWhatsapp: false,
+          rejectionPenalty: null,
+          status: TEAM_STATUS.TASK_ACTIVE,
+          activePopup: {
+            title: task.title,
+            body: task.popup || task.body,
+            kind: task.presentation,
+            stage: "detail",
+            cardId: task.cardId
+          }
+        }
+      }
+    };
+  });
+}
+
+export function demoEnterCafeVanOuds(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    if (!teamState) {
+      return state;
+    }
+
+    const tile = findTileById(33);
+    const task = createTaskFromTileBehavior(tile);
+
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          position: 33,
+          currentTileId: 33,
+          positionReachedAt: now(),
+          currentTask: task,
+          proofInWhatsapp: false,
+          rejectionPenalty: null,
+          status: TEAM_STATUS.TASK_ACTIVE,
+          activePopup: {
+            title: task.title,
+            body: task.popup || task.body,
+            kind: task.presentation,
+            stage: "detail"
+          }
+        }
+      }
+    };
+  });
+}
+
+export function updateDock17Choice(teamId, choiceId, number) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (!teamState || task?.specialFlow !== "dock17" || task.dock17Revealed) {
+      return state;
+    }
+
+    const safeNumber = Math.min(Math.max(Number(number) || 1, 1), 17);
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          currentTask: {
+            ...task,
+            dock17Choices: task.dock17Choices.map((choice) =>
+              choice.id === choiceId ? { ...choice, number: safeNumber } : choice
+            )
+          }
+        }
+      }
+    };
+  });
+}
+
+export function addDock17Player(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (!teamState || task?.specialFlow !== "dock17" || task.dock17Revealed) {
+      return state;
+    }
+
+    const nextIndex = task.dock17Choices.length + 1;
+    const nextName = getNextActivePlayerName(teamState, nextIndex);
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          activePlayers: [...getActivePlayers(teamState), nextName],
+          currentTask: {
+            ...task,
+            dock17Choices: [
+              ...task.dock17Choices,
+              {
+                id: `player_${nextIndex}`,
+                name: nextName,
+                number: null,
+                drink: ""
+              }
+            ]
+          }
+        }
+      }
+    };
+  });
+}
+
+export function revealDock17Choices(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (!teamState || task?.specialFlow !== "dock17") {
+      return state;
+    }
+
+    const revealedChoices = task.dock17Choices.map((choice) => {
+      const number = Math.min(Math.max(Number(choice.number) || 1, 1), 17);
+      return {
+        ...choice,
+        number,
+        drink: DOCK17_DRINKS.find((item) => item.id === number)?.drink ?? "Onbekend drankje"
+      };
+    });
+    const summary = revealedChoices
+      .map((choice) => `${choice.name}: ${choice.number} = ${choice.drink}`)
+      .join(" | ");
+
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          currentTask: {
+            ...task,
+            dock17Choices: revealedChoices,
+            dock17Revealed: true,
+            reviewBody: `Dock17 uitslag: ${summary}`,
+            reviewExtra: `Controlelijst: ${DOCK17_DRINKS.map((item) => `${item.id}. ${item.drink}`).join(" | ")}`
+          },
+          activePopup: {
+            title: "Dock17 onthuld",
+            body: summary,
+            kind: "task",
+            stage: "detail"
+          }
+        }
+      }
+    };
+  });
+}
+
+function removeSavedPowerUp(teamState, powerUpId) {
+  return getSavedPowerUps(teamState).filter((powerUp) => powerUp.id !== powerUpId);
+}
+
+export function useSavedPowerUp(teamId, powerUpId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const powerUps = getSavedPowerUps(teamState);
+    const selectedPowerUp = powerUps.find((powerUp) => powerUp.id === powerUpId) ?? powerUps[0];
+    if (!teamState || !selectedPowerUp) {
+      return state;
+    }
+
+    if (selectedPowerUp.type === "skip_task") {
       return {
         ...state,
         teams: {
@@ -1491,6 +1787,7 @@ export function useSavedPowerUp(teamId) {
             ...teamState,
             currentTask: null,
             savedPowerUp: null,
+            savedPowerUps: removeSavedPowerUp(teamState, selectedPowerUp.id),
             pendingBonusRoll: true,
             proofInWhatsapp: false,
             rejectionPenalty: null,
@@ -1505,7 +1802,7 @@ export function useSavedPowerUp(teamId) {
       };
     }
 
-    if (teamState.savedPowerUp.type === "objection" && teamState.status === TEAM_STATUS.REJECTED) {
+    if (selectedPowerUp.type === "objection" && teamState.status === TEAM_STATUS.REJECTED) {
       return {
         ...state,
         teams: {
@@ -1513,6 +1810,7 @@ export function useSavedPowerUp(teamId) {
           [teamId]: {
             ...teamState,
             savedPowerUp: null,
+            savedPowerUps: removeSavedPowerUp(teamState, selectedPowerUp.id),
             proofInWhatsapp: false,
             rejectionPenalty: null,
             status: getApprovedNextStatus(state, teamState),
@@ -1526,7 +1824,7 @@ export function useSavedPowerUp(teamId) {
       };
     }
 
-    if (teamState.savedPowerUp.type === "jail_free" && teamState.status === TEAM_STATUS.IN_JAIL) {
+    if (selectedPowerUp.type === "jail_free" && teamState.status === TEAM_STATUS.IN_JAIL) {
       return {
         ...state,
         teams: {
@@ -1534,6 +1832,7 @@ export function useSavedPowerUp(teamId) {
           [teamId]: {
             ...teamState,
             savedPowerUp: null,
+            savedPowerUps: removeSavedPowerUp(teamState, selectedPowerUp.id),
             jailUntil: null,
             currentTask: null,
             status: TEAM_STATUS.APPROVED,
@@ -1555,10 +1854,11 @@ export function useSavedPowerUp(teamId) {
           ...teamState,
           activePopup: {
             title: "Power-up gebruikt",
-            body: `${teamState.savedPowerUp.label} staat nu als gebruikt. De automatische blokkade bij inkomende teamacties koppelen we in de volgende laag.`,
+            body: `${selectedPowerUp.label} staat nu als gebruikt. De automatische blokkade bij inkomende teamacties koppelen we in de volgende laag.`,
             kind: "fund"
           },
-          savedPowerUp: null
+          savedPowerUp: null,
+          savedPowerUps: removeSavedPowerUp(teamState, selectedPowerUp.id)
         }
       }
     };
