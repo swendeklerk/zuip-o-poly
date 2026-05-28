@@ -700,7 +700,7 @@ function renderMoveFlash(teamState) {
 
 function renderDemoTools(team, teamState) {
   const session = getCurrentSession();
-  if (!session?.demo || !ui.demoToolsVisible) {
+  if (!session?.demo) {
     return "";
   }
 
@@ -1133,6 +1133,7 @@ app.addEventListener("click", (event) => {
 
   if (action === "start-team-demo") {
     ui.teamTab = "play";
+    ui.demoToolsVisible = true;
     startTeamDemo();
     render();
   }
