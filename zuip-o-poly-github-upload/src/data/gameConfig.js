@@ -10,8 +10,8 @@ export const GAME_CONFIG = {
 export const TEAM_RULES = [
   "Gooi met 1 dobbelsteen.",
   "Voer de opdracht uit die verschijnt.",
-  "Stuur bewijs in WhatsApp.",
-  "Klik daarna op 'Bewijs staat in WhatsApp'.",
+  "Zorg dat jullie bewijs duidelijk is.",
+  "Klik daarna op de bewijsknop.",
   "Je mag pas verder na goedkeuring door de Kroegraad.",
   "Spel afgelopen? Volg de instructie in de app."
 ];

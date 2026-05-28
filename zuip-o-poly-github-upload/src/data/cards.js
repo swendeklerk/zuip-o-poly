@@ -19,7 +19,7 @@ const CHANCE_CARDS = [
     id: "chance-blind-vertrouwen",
     title: "Blind Vertrouwen",
     body:
-      "Jullie zicht is tijdelijk uitgeschakeld. Een actief teamlid krijgt de blinddoek om. De rest begeleidt deze persoon naar de bar en laat hem of haar bestellen. Bij de bar mag de blinddoek even af. Daarna gaat de blinddoek opnieuw om en neemt dezelfde persoon geblinddoekt een flinke slok van het drankje. Bewijs via WhatsApp.",
+      "Jullie zicht is tijdelijk uitgeschakeld. Een actief teamlid krijgt de blinddoek om. De rest begeleidt deze persoon naar de bar en laat hem of haar bestellen. Bij de bar mag de blinddoek even af. Daarna gaat de blinddoek opnieuw om en neemt dezelfde persoon geblinddoekt een flinke slok van het drankje.",
     effectType: "task"
   },
   {
@@ -41,7 +41,7 @@ const CHANCE_CARDS = [
     id: "chance-dorstige-douane",
     title: "Dorstige Douane",
     body:
-      "Ho, stop. De Dorstige Douane heeft jullie staande gehouden. Ieder actief teamlid moet 1 minuut op een been blijven staan. Tijdens deze minuut zegt ieder teamlid om de beurt: \"Ik ben volledig nuchter en betrouwbaar.\" Valt iemand om, raakt iemand met de tweede voet de grond of vergeet iemand de zin, dan begint de opdracht opnieuw. Bewijs via WhatsApp.",
+      "Ho, stop. De Dorstige Douane heeft jullie staande gehouden. Ieder actief teamlid moet 1 minuut op een been blijven staan. Tijdens deze minuut zegt ieder teamlid om de beurt: \"Ik ben volledig nuchter en betrouwbaar.\" Valt iemand om, raakt iemand met de tweede voet de grond of vergeet iemand de zin, dan begint de opdracht opnieuw.",
     effectType: "task"
   },
   {

@@ -4,6 +4,7 @@ import { TEAM_STATUS, GAME_PHASE } from "./data/statuses.js";
 import { KROEGRAAD_USERS, TEAMS, findTeamById, teamsForKroegraad } from "./data/teams.js";
 import { findTileById } from "./data/tiles.js";
 import { getTileTheme } from "./data/tileThemes.js";
+import { CAFE_VAN_OUDS_WHEEL_OPTIONS } from "./data/tileAssignments.js";
 import {
   allTeamsLoggedIn,
   approveTeamTask,
@@ -36,6 +37,8 @@ import {
   updateDock17Choice,
   addDock17Player,
   revealDock17Choices,
+  addCafeVanOudsPlayer,
+  spinCafeVanOudsWheel,
   useSavedPowerUp,
   initializeRemoteSync,
   togglePause,
@@ -54,6 +57,11 @@ const ui = {
   skipRemoteSync: false,
   syncMode: "connecting"
 };
+const activeVanOudsSpins = new Map();
+const VAN_OUDS_TICKER_ITEM_WIDTH = 150;
+const VAN_OUDS_TICKER_ITEM_GAP = 10;
+const VAN_OUDS_TICKER_PADDING = 10;
+const VAN_OUDS_TICKER_PRE_ITEMS = 15;
 
 function isSyncBlocking() {
   return !ui.skipRemoteSync && ui.syncMode === "connecting";
@@ -173,7 +181,7 @@ function teamCard(team, teamState, extra = "") {
         </div>
         <div>
           <dt>Bewijs</dt>
-          <dd>${teamState.proofInWhatsapp ? "WhatsApp" : "-"}</dd>
+          <dd>${teamState.proofInWhatsapp ? "Verstuurd" : "-"}</dd>
         </div>
       </dl>
       ${
@@ -478,7 +486,7 @@ function renderActivePlayCard(teamState, teamId, currentTile) {
         <div>
           <p class="eyebrow">Bewijs verstuurd</p>
           <h2>Wacht op Kroegraad</h2>
-          <p class="tile-type">Bewijs staat in WhatsApp. De toegewezen Kroegraad ziet jullie nu bovenaan als TE KEUREN.</p>
+              <p class="tile-type">De toegewezen Kroegraad ziet jullie nu bovenaan als TE KEUREN.</p>
         </div>
         ${renderActionButton(teamState, teamId)}
       </section>
@@ -490,7 +498,7 @@ function renderActivePlayCard(teamState, teamId, currentTile) {
       <section class="panel play-panel verdict-panel rejected-panel">
         <p class="eyebrow">Afgekeurd</p>
         <h2>AFGEKEURD</h2>
-        <p class="tile-type">Niet door de Kroegraad gekomen. Doe de straf en stuur daarna opnieuw bewijs via WhatsApp.</p>
+        <p class="tile-type">Niet door de Kroegraad gekomen. Doe de straf en druk daarna opnieuw op de bewijsknop.</p>
         ${renderTask(teamState)}
         ${renderActionButton(teamState, teamId)}
       </section>
@@ -526,7 +534,105 @@ function renderSpecialTaskFlow(teamState, teamId) {
     return renderDock17Flow(teamState, teamId);
   }
 
+  if (teamState.currentTask?.specialFlow === "vanOuds") {
+    return renderCafeVanOudsFlow(teamState, teamId);
+  }
+
   return "";
+}
+
+function renderCafeVanOudsFlow(teamState, teamId) {
+  const task = teamState.currentTask;
+  const complete = task.vanOudsChoices.every((choice) => choice.result);
+  const spinPreview = activeVanOudsSpins.get(teamId);
+  const highlightedChoice = task.vanOudsChoices.find((choice) => choice.id === spinPreview?.choiceId);
+  const latestChoice = [...task.vanOudsChoices].reverse().find((choice) => choice.result);
+  const tickerFocus = highlightedChoice?.result ?? latestChoice?.result ?? "RAD";
+  const landedItems = !spinPreview && latestChoice?.result
+    ? createVanOudsTickerItems(latestChoice.result)
+    : null;
+  const tickerItems =
+    spinPreview?.items ??
+    landedItems ??
+    CAFE_VAN_OUDS_WHEEL_OPTIONS.map((item) => ({
+      label: item,
+      focus: item === tickerFocus
+    }));
+  const tickerLandingOffset =
+    spinPreview?.landingOffset ??
+    (landedItems ? getVanOudsTickerLandingOffset(landedItems) : null);
+  const tickerClass = spinPreview ? "is-active" : landedItems ? "is-landed" : "";
+
+  return `
+    <section class="special-flow van-ouds-flow ${spinPreview ? "is-spinning" : ""}">
+      <div class="special-flow-header">
+        <span>Rad van Bier en Vertier</span>
+        <strong>${task.vanOudsChoices.length} spelers</strong>
+      </div>
+      <div class="van-ouds-wheel-wrap" aria-hidden="true">
+        <div class="van-ouds-pointer"></div>
+        <div class="van-ouds-wheel">
+          <span>RAD</span>
+        </div>
+      </div>
+      <div class="van-ouds-ticker ${tickerClass}" aria-hidden="true">
+        <div ${tickerLandingOffset ? `style="--landing-offset: ${tickerLandingOffset}px"` : ""}>
+          ${tickerItems.map((item) => `<span class="${item.focus ? "is-focus" : ""}" title="${item.label}">${item.label}</span>`).join("")}
+        </div>
+      </div>
+      <div class="dock17-player-list">
+        ${task.vanOudsChoices
+          .map((choice) => `
+            <div class="dock17-player van-ouds-player">
+              <span>${choice.name}</span>
+              ${
+                choice.result
+                  ? `<strong>${choice.result}</strong>`
+                  : button("Draai rad", "ghost small", `data-action="van-ouds-spin" data-team-id="${teamId}" data-choice-id="${choice.id}"`)
+              }
+            </div>
+          `)
+          .join("")}
+      </div>
+      <div class="dock17-actions">
+        ${button("+ teamlid", "ghost", `data-action="van-ouds-add-player" data-team-id="${teamId}"`)}
+      </div>
+      ${
+        complete
+          ? `<p class="dock17-result-note">Iedereen heeft gedraaid. Druk op de bewijsknop zodra jullie klaar zijn.</p>`
+          : `<p class="van-ouds-helper">Draai per actieve speler één keer aan het rad.</p>`
+      }
+    </section>
+  `;
+}
+
+function createVanOudsTickerItems(result) {
+  const options = CAFE_VAN_OUDS_WHEEL_OPTIONS;
+  const resultIndex = Math.max(options.indexOf(result), 0);
+  const items = [];
+  for (let index = 0; index < VAN_OUDS_TICKER_PRE_ITEMS; index += 1) {
+    const option = options[(resultIndex + index + 4) % options.length];
+    items.push({ label: option, focus: false });
+  }
+  items.push({ label: result, focus: true });
+  return items;
+}
+
+function getVanOudsTickerLandingOffset(items) {
+  const focusIndex = Math.max(items.findIndex((item) => item.focus), 0);
+  return (
+    VAN_OUDS_TICKER_PADDING +
+    focusIndex * (VAN_OUDS_TICKER_ITEM_WIDTH + VAN_OUDS_TICKER_ITEM_GAP) +
+    VAN_OUDS_TICKER_ITEM_WIDTH / 2
+  );
+}
+
+function chooseVanOudsResult(teamId) {
+  const task = getState().teams[teamId]?.currentTask;
+  const usedResults = new Set(task?.vanOudsChoices?.map((choice) => choice.result).filter(Boolean) ?? []);
+  const availableOptions = CAFE_VAN_OUDS_WHEEL_OPTIONS.filter((item) => !usedResults.has(item));
+  const pool = availableOptions.length ? availableOptions : CAFE_VAN_OUDS_WHEEL_OPTIONS;
+  return pool[Math.floor(Math.random() * pool.length)] ?? CAFE_VAN_OUDS_WHEEL_OPTIONS[0];
 }
 
 function renderDock17Flow(teamState, teamId) {
@@ -561,7 +667,7 @@ function renderDock17Flow(teamState, teamId) {
       </div>
       ${
         task.dock17Revealed
-          ? `<p class="dock17-result-note">Uitslag staat klaar voor de Kroegraad. Stuur bewijs via WhatsApp.</p>`
+          ? `<p class="dock17-result-note">Uitslag staat klaar voor de Kroegraad. Druk op de bewijsknop zodra jullie klaar zijn.</p>`
           : `<div class="dock17-actions">
               ${button("+ teamlid", "ghost", `data-action="dock17-add-player" data-team-id="${teamId}"`)}
               ${button("Onthul drankjes", "primary", `data-action="dock17-reveal" data-team-id="${teamId}" ${allChosen ? "" : "disabled"}`)}
@@ -819,6 +925,10 @@ function renderActionButton(teamState, teamId) {
       return button("Onthul eerst de drankjes", "disabled", "disabled");
     }
 
+    if (teamState.currentTask?.specialFlow === "vanOuds" && !teamState.currentTask.vanOudsComplete) {
+      return button("Draai eerst het rad", "disabled", "disabled");
+    }
+
     return button("Bewijs staat in WhatsApp", "primary proof-button", `data-action="submit-proof" ${teamAttr}`);
   }
 
@@ -940,7 +1050,7 @@ function renderKroegraadRunning(session, state, displayName) {
         ${
           reviewTeams.length
             ? reviewTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState, true)).join("")
-            : `<div class="council-empty-review">Er staat nog geen bewijs klaar in WhatsApp.</div>`
+            : `<div class="council-empty-review">Er staat nog geen keuring klaar.</div>`
         }
       </section>
       <section class="council-section">
@@ -993,7 +1103,7 @@ function renderCouncilTeamCard(team, teamState, focus = false) {
       ${
         needsReview && teamState.currentTask
           ? `
-            <p class="council-status is-hot">Bewijs staat in WhatsApp. Check de groepsapp en kies daarna hieronder.</p>
+            <p class="council-status is-hot">Check het bewijs en kies daarna hieronder.</p>
             <article class="task-card review-task">
               <span class="review-label">Opdracht</span>
               <h3>${teamState.currentTask.title}</h3>
@@ -1232,6 +1342,29 @@ app.addEventListener("click", (event) => {
       revealDock17Choices(actionTarget.dataset.teamId);
       render();
     }, 850);
+  }
+
+  if (action === "van-ouds-add-player") {
+    addCafeVanOudsPlayer(actionTarget.dataset.teamId);
+    render();
+  }
+
+  if (action === "van-ouds-spin") {
+    const result = chooseVanOudsResult(actionTarget.dataset.teamId);
+    const tickerItems = createVanOudsTickerItems(result);
+    actionTarget.disabled = true;
+    activeVanOudsSpins.set(actionTarget.dataset.teamId, {
+      choiceId: actionTarget.dataset.choiceId,
+      result,
+      items: tickerItems,
+      landingOffset: getVanOudsTickerLandingOffset(tickerItems)
+    });
+    render();
+    window.setTimeout(() => {
+      spinCafeVanOudsWheel(actionTarget.dataset.teamId, actionTarget.dataset.choiceId, result);
+      activeVanOudsSpins.delete(actionTarget.dataset.teamId);
+      render();
+    }, 2800);
   }
 
   if (action === "demo-open-lars") {

@@ -45,7 +45,7 @@ export const TILE_ASSIGNMENTS = {
     label: "Speciaal Vak",
     location: "Fietsbelasting",
     popup: "Stijn raakte ooit zijn witte Batavus kwijt. Tragisch, onnodig en tot op de dag van vandaag eigenlijk nog steeds niet helemaal verwerkt. Tijd om de zoektocht officieel te heropenen.",
-    teamText: "Fotografeer 5 witte fietsen als eerbetoon aan Stijns verdwenen witte Batavus. De fietsen moeten duidelijk herkenbaar wit zijn. Dit mogen losse foto’s zijn of één foto/video waarin meerdere witte fietsen zichtbaar zijn. Stuur bewijs via WhatsApp. Na goedkeuring van de Kroegraad mogen jullie verder.",
+    teamText: "Fotografeer 5 witte fietsen als eerbetoon aan Stijns verdwenen witte Batavus. De fietsen moeten duidelijk herkenbaar wit zijn. Dit mogen losse foto’s zijn of één foto/video waarin meerdere witte fietsen zichtbaar zijn. Na goedkeuring van de Kroegraad mogen jullie verder.",
     kroegraadSummary: "Team moet 5 duidelijk herkenbare witte fietsen fotograferen als verwijzing naar Stijns kwijtgeraakte witte Batavus.",
     rules: "-"
   },
@@ -125,7 +125,7 @@ export const TILE_ASSIGNMENTS = {
     label: "Speciaal Vak",
     location: "Waterleiding",
     popup: "Oei. De waterleiding is gesprongen. Heel vervelend natuurlijk, vooral voor degene die straks als noodopvang wordt gebruikt. Tijd voor waterschade in teamverband.",
-    teamText: "Koop of regel een flesje water. Kies één actief teamlid uit en gooi het flesje water volledig leeg over deze persoon. Stuur bewijs via WhatsApp waarop duidelijk te zien is dat het water echt over een teamgenoot heen gaat. Na goedkeuring van de Kroegraad mogen jullie verder.",
+    teamText: "Koop of regel een flesje water. Kies één actief teamlid uit en gooi het flesje water volledig leeg over deze persoon. Zorg dat duidelijk te zien is dat het water echt over een teamgenoot heen gaat. Na goedkeuring van de Kroegraad mogen jullie verder.",
     kroegraadSummary: "Team moet een flesje water volledig leeggooien over één actief teamlid.",
     rules: "-"
   },
@@ -315,8 +315,8 @@ export const TILE_ASSIGNMENTS = {
     label: "Kroeg",
     location: "Dock 17",
     popup: "Een heeeerlijk plekje aan de Waalkade. Maar geen tijd om te genieten, we houden het tempo er in:",
-    teamText: "Elke actieve speler kiest een eigen getal tussen de 1-17. Geef deze namen+getallen via Whatsapp privé door aan jouw Kroegraad. Wacht rustig af…",
-    kroegraadSummary: "Er is een lijst met drankjes verdeeld over de getallen 1-17*. Het getal wat gekozen wordt, staat dus gelijk aan een bepaald drankje die de betreffende persoon moet drinken.",
+    teamText: "Elke actieve speler kiest in de app een eigen getal tussen de 1 en 17. Daarna onthult de app welk drankje daarbij hoort. Drink de gekozen drankjes.",
+    kroegraadSummary: "De app toont per actieve speler welk getal is gekozen en welk drankje daarbij hoort. Kroegraad keurt de gedronken drankjes.",
     rules: "Gekozen getal = drankje op de kaart. Geen wisselingen onderling."
   },
   33: {
@@ -325,7 +325,7 @@ export const TILE_ASSIGNMENTS = {
     label: "Kroeg",
     location: "Café Van Ouds",
     popup: "We gaan het even lekker doen zoals van ouds: Een ouderwets draaitje aan het rad!",
-    teamText: "Open het Rad van Bier en Vertier. Ieder actief teamlid draait één keer aan het rad en bestelt het drankje waar hij/zij op belandt. Drink dit in maximaal 3 slokken op. Bewijs via WhatsApp.",
+    teamText: "Open het Rad van Bier en Vertier. Ieder actief teamlid draait één keer aan het rad en bestelt het drankje waar hij/zij op belandt. Drink dit in maximaal 3 slokken op.",
     kroegraadSummary: "Ieder actief teamlid draait één keer aan het Rad van Bier en Vertier. Het rad bepaalt het drankje. Drinken in maximaal 3 slokken.",
     rules: "Ieder actief teamlid draait één keer aan het rad. Het rad bepaalt.\nMaximaal 3 slokken per drankje."
   },
@@ -385,7 +385,7 @@ export const TILE_ASSIGNMENTS = {
     label: "Speciaal Vak",
     location: "Zuipbelasting",
     popup: "Gefeliciteerd, jullie zijn officieel aangeslagen door de Zuipbelasting. De Belastingdienst is misschien streng, maar deze variant is vooral dorstig. Betalen kan vandaag niet met geld, alleen met ICE.",
-    teamText: "Kies één actief teamlid. Deze persoon drinkt een grote fles ICE leeg. De rest van het team mag aanmoedigen, uitlachen of doen alsof dit een verstandige keuze is. Stuur bewijs via WhatsApp waarop duidelijk te zien is wie de fles leegdrinkt. Na goedkeuring van de Kroegraad mogen jullie verder.",
+    teamText: "Kies één actief teamlid. Deze persoon drinkt een grote fles ICE leeg. De rest van het team mag aanmoedigen, uitlachen of doen alsof dit een verstandige keuze is. Zorg dat duidelijk te zien is wie de fles leegdrinkt. Na goedkeuring van de Kroegraad mogen jullie verder.",
     kroegraadSummary: "Eén actief teamlid moet een grote fles ICE leegdrinken.",
     rules: "-"
   },
@@ -422,6 +422,25 @@ export const DOCK17_DRINKS = [
 ];
 
 export const CAFE_VAN_OUDS_WHEEL_URL = "https://wheelofnames.com/bd9-pru";
+
+export const CAFE_VAN_OUDS_WHEEL_OPTIONS = [
+  "Omer",
+  "Guinness",
+  "Affligem Tripel",
+  "Texels Jutter",
+  "Delirium Tremens",
+  "Brand Weizen",
+  "Wisseltap / speciaalbier van de maand",
+  "Leffe Blond",
+  "Westmalle Dubbel",
+  "Affligem Blond",
+  "La Chouffe",
+  "Duvel",
+  "Heineken",
+  "Tripel Karmeliet",
+  "Affligem Dubbel",
+  "Texels Skuumkoppe"
+];
 
 export function getTileAssignment(tileId) {
   return TILE_ASSIGNMENTS[tileId] ?? null;

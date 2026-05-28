@@ -1,4 +1,4 @@
-import { CAFE_VAN_OUDS_WHEEL_URL, DOCK17_DRINKS, getTileAssignment } from "./tileAssignments.js";
+import { DOCK17_DRINKS, getTileAssignment } from "./tileAssignments.js";
 
 export const REJECTION_PENALTY =
   "Niet door de Kroegraad gekomen. Twee teamleden trekken als straf een koolzuurhoudend drankje van minimaal 330 ml. Daarna doen jullie dezelfde opdracht opnieuw.";
@@ -35,8 +35,8 @@ export function createTaskForTile(tile) {
         tile.id === 32
           ? `Dock17 lijst: ${DOCK17_DRINKS.map((item) => `${item.id}. ${item.drink}`).join(" | ")}`
           : "",
-      actionUrl: tile.id === 33 ? CAFE_VAN_OUDS_WHEEL_URL : "",
-      actionLabel: tile.id === 33 ? "Open Rad van Bier en Vertier" : "",
+      actionUrl: "",
+      actionLabel: "",
       rules,
       placeholder: !teamText,
       presentation: tile.type === "Snackstation" ? "snack" : tile.id === 21 ? "parking" : "task"

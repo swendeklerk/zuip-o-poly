@@ -1,6 +1,6 @@
 import { GAME_CONFIG } from "../data/gameConfig.js";
 import { CARD_DECKS, drawCard } from "../data/cards.js";
-import { DOCK17_DRINKS } from "../data/tileAssignments.js";
+import { CAFE_VAN_OUDS_WHEEL_OPTIONS, DOCK17_DRINKS } from "../data/tileAssignments.js";
 import { createTaskForTile, REJECTION_PENALTY } from "../data/tasks.js";
 import { TEAMS, findKroegraad, findTeamByCode, findTeamById, findTeamByLogin } from "../data/teams.js";
 import { findTileById } from "../data/tiles.js";
@@ -222,13 +222,13 @@ function tickState(state) {
               jailUntil: null,
               currentTask: {
                 title: "Strafopdracht cel",
-                body: "Loop een volledig rondje om het Keizer Karelplein. Bewijs via WhatsApp.",
+                body: "Loop een volledig rondje om het Keizer Karelplein.",
                 placeholder: false,
                 presentation: "jail"
               },
               activePopup: {
                 title: "Strafopdracht",
-                body: "Loop een volledig rondje om het Keizer Karelplein. Bewijs via WhatsApp.",
+                body: "Loop een volledig rondje om het Keizer Karelplein.",
                 kind: "task",
                 stage: "detail"
               },
@@ -686,6 +686,34 @@ function withDock17Meta(task, teamState) {
   };
 }
 
+function withCafeVanOudsMeta(task, teamState) {
+  if (teamState.currentTileId !== 33) {
+    return task;
+  }
+
+  return {
+    ...task,
+    specialFlow: "vanOuds",
+    vanOudsChoices: getActivePlayers(teamState).map((name, index) => ({
+      id: `player_${index + 1}`,
+      name,
+      result: ""
+    })),
+    vanOudsComplete: false
+  };
+}
+
+function withSpecialTaskMeta(task, teamState) {
+  return withCafeVanOudsMeta(withDock17Meta(task, teamState), teamState);
+}
+
+function getVanOudsSummary(choices) {
+  return choices
+    .filter((choice) => choice.result)
+    .map((choice) => `${choice.name}: ${choice.result}`)
+    .join(" | ");
+}
+
 function createStartBonusTask() {
   return {
     title: "Grote Markt Nijmegen",
@@ -710,7 +738,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
   const tile = findTileById(position);
   const crossedStart = roundsGained > 0 || position === 1;
   const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile);
-  const task = withDock17Meta(baseTask, { ...teamState, currentTileId: position });
+  const task = withSpecialTaskMeta(baseTask, { ...teamState, currentTileId: position });
   const movedAt = now();
 
   const movedState = {
@@ -761,7 +789,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
 function moveTeamToTile(state, teamId, position, options = {}) {
   const teamState = state.teams[teamId];
   const tile = findTileById(position);
-  const task = withDock17Meta(createTaskFromTileBehavior(tile), { ...teamState, currentTileId: position });
+  const task = withSpecialTaskMeta(createTaskFromTileBehavior(tile), { ...teamState, currentTileId: position });
   const movedAt = now();
 
   return {
@@ -952,7 +980,7 @@ export function rollDice(teamId) {
     const tile = findTileById(nextPosition);
     const crossedStart = roundsGained > 0 || nextPosition === 1;
     const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile);
-    const task = withDock17Meta(baseTask, { ...teamState, currentTileId: nextPosition });
+    const task = withSpecialTaskMeta(baseTask, { ...teamState, currentTileId: nextPosition });
     const movedAt = now();
     const nextState = {
       ...state,
@@ -1267,8 +1295,14 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
     if (task.effectType === "swap_positions") {
       const actorTile = findTileById(targetState.position);
       const targetTile = findTileById(teamState.position);
-      const actorTask = createTaskFromTileBehavior(actorTile);
-      const targetTask = createTaskFromTileBehavior(targetTile);
+      const actorTask = withSpecialTaskMeta(createTaskFromTileBehavior(actorTile), {
+        ...teamState,
+        currentTileId: targetState.position
+      });
+      const targetTask = withSpecialTaskMeta(createTaskFromTileBehavior(targetTile), {
+        ...targetState,
+        currentTileId: teamState.position
+      });
       const swappedAt = now();
       const targetName = findTeamById(targetTeamId)?.name ?? "Het gekozen team";
 
@@ -1324,6 +1358,10 @@ export function submitProofInWhatsapp(teamId) {
     }
 
     if (teamState.currentTask?.specialFlow === "dock17" && !teamState.currentTask.dock17Revealed) {
+      return state;
+    }
+
+    if (teamState.currentTask?.specialFlow === "vanOuds" && !teamState.currentTask.vanOudsComplete) {
       return state;
     }
 
@@ -1592,7 +1630,7 @@ export function demoEnterDock17(teamId) {
     }
 
     const tile = findTileById(32);
-    const task = withDock17Meta(createTaskFromTileBehavior(tile), {
+    const task = withSpecialTaskMeta(createTaskFromTileBehavior(tile), {
       ...teamState,
       currentTileId: 32
     });
@@ -1631,7 +1669,10 @@ export function demoEnterCafeVanOuds(teamId) {
     }
 
     const tile = findTileById(33);
-    const task = createTaskFromTileBehavior(tile);
+    const task = withSpecialTaskMeta(createTaskFromTileBehavior(tile), {
+      ...teamState,
+      currentTileId: 33
+    });
 
     return {
       ...state,
@@ -1679,6 +1720,92 @@ export function updateDock17Choice(teamId, choiceId, number) {
               choice.id === choiceId ? { ...choice, number: safeNumber } : choice
             )
           }
+        }
+      }
+    };
+  });
+}
+
+export function addCafeVanOudsPlayer(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (!teamState || task?.specialFlow !== "vanOuds") {
+      return state;
+    }
+
+    const nextIndex = task.vanOudsChoices.length + 1;
+    const nextName = getNextActivePlayerName(teamState, nextIndex);
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          activePlayers: [...getActivePlayers(teamState), nextName],
+          currentTask: {
+            ...task,
+            vanOudsComplete: false,
+            vanOudsChoices: [
+              ...task.vanOudsChoices,
+              {
+                id: `player_${nextIndex}`,
+                name: nextName,
+                result: ""
+              }
+            ]
+          }
+        }
+      }
+    };
+  });
+}
+
+export function spinCafeVanOudsWheel(teamId, choiceId, forcedResult = "") {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (!teamState || task?.specialFlow !== "vanOuds") {
+      return state;
+    }
+
+    const usedResults = new Set(task.vanOudsChoices.map((choice) => choice.result).filter(Boolean));
+    const availableOptions = CAFE_VAN_OUDS_WHEEL_OPTIONS.filter((item) => !usedResults.has(item));
+    const fallbackPool = availableOptions.length ? availableOptions : CAFE_VAN_OUDS_WHEEL_OPTIONS;
+    const result =
+      CAFE_VAN_OUDS_WHEEL_OPTIONS.includes(forcedResult) && !usedResults.has(forcedResult)
+        ? forcedResult
+        : fallbackPool[Math.floor(Math.random() * fallbackPool.length)] ?? "Pils";
+    const resultIndex = Math.max(CAFE_VAN_OUDS_WHEEL_OPTIONS.indexOf(result), 0);
+    const choices = task.vanOudsChoices.map((choice) =>
+      choice.id === choiceId && !choice.result ? { ...choice, result, resultIndex } : choice
+    );
+    const complete = choices.every((choice) => choice.result);
+    const summary = getVanOudsSummary(choices);
+
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          currentTask: {
+            ...task,
+            vanOudsChoices: choices,
+            vanOudsComplete: complete,
+            reviewBody: complete
+              ? `Café Van Ouds rad-uitslag: ${summary}`
+              : "Café Van Ouds: nog niet ieder actief teamlid heeft aan het rad gedraaid.",
+            reviewExtra: `Rad-opties: ${CAFE_VAN_OUDS_WHEEL_OPTIONS.join(" | ")}`
+          },
+          activePopup: complete
+            ? {
+                title: "Rad compleet",
+                body: `${summary}. Druk op de bewijsknop zodra jullie klaar zijn.`,
+                kind: "task",
+                stage: "detail"
+              }
+            : teamState.activePopup
         }
       }
     };
