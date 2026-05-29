@@ -23,12 +23,12 @@ export const TEAMS = [
   },
   {
     id: "team_rode_neus",
-    name: "Rode Neus",
+    name: "Geel Zucht",
     players: ["Celeste", "Thijs", "Jelle H."],
     defaultActivePlayers: ["Celeste", "Thijs", "Jelle H."],
-    colorName: "Rood",
-    accent: "#ee1b2f",
-    code: "RODENEUS",
+    colorName: "Geel",
+    accent: "#f4bf45",
+    code: "GEELZUCHT",
     password: "0000",
     kroegraadId: "SWEN"
   },

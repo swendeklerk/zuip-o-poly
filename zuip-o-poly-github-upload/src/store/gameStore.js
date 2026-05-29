@@ -709,7 +709,7 @@ export function loginTeam(code) {
   if (!team) {
     return {
       ok: false,
-      message: "Deze teamcode herken ik niet. Gebruik BRUINEKROEG, ZWARTEPINT, RODENEUS of WITTEBATAVUS."
+        message: "Deze teamcode herken ik niet. Gebruik BRUINEKROEG, ZWARTEPINT, GEELZUCHT of WITTEBATAVUS."
     };
   }
 

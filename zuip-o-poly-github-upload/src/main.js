@@ -1726,7 +1726,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
-      rode: "team_rode_neus",
+      geel: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";
@@ -1749,7 +1749,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
-      rode: "team_rode_neus",
+      geel: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";
@@ -1768,7 +1768,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
-      rode: "team_rode_neus",
+      geel: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";
@@ -1789,7 +1789,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
-      rode: "team_rode_neus",
+      geel: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";

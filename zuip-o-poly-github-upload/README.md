@@ -40,7 +40,7 @@ Voor lokale Supabase-config vul je `config.js` in. Gebruik alleen de Supabase `a
 2. Log de teams in met:
    - `BRUINEKROEG`
    - `ZWARTEPINT`
-   - `RODENEUS`
+   - `GEELZUCHT`
    - `WITTEBATAVUS`
 3. Open een Kroegraad-tab en log in met:
    - `SWEN` / `0805`
