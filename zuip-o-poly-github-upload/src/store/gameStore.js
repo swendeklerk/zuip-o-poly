@@ -171,6 +171,29 @@ function emit() {
 }
 
 function tickState(state) {
+  if (state.phase === GAME_PHASE.RUNNING) {
+    let needsStartStatusRepair = false;
+    const repairedTeams = { ...state.teams };
+
+    for (const team of TEAMS) {
+      const teamState = repairedTeams[team.id];
+      if (teamState?.loggedIn && teamState.status === TEAM_STATUS.WAITING_START) {
+        repairedTeams[team.id] = {
+          ...teamState,
+          status: TEAM_STATUS.CAN_ROLL
+        };
+        needsStartStatusRepair = true;
+      }
+    }
+
+    if (needsStartStatusRepair) {
+      return {
+        ...state,
+        teams: repairedTeams
+      };
+    }
+  }
+
   if (state.phase === GAME_PHASE.RUNNING && isTurnLimitGameComplete(state) && !state.timerFinishedAt) {
     const finishedState = {
       ...state,
