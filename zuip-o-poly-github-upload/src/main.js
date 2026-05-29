@@ -903,7 +903,11 @@ function renderDicePanel(teamState, teamId) {
           ${Array.from({ length: 6 }, (_, index) => `<span class="pip pip-${index + 1}"></span>`).join("")}
         </div>
       </div>
-      ${renderActionButton(teamState, teamId)}
+      ${button(
+        teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi dobbelsteen",
+        "primary roll-dice-button",
+        `data-action="roll-dice" data-team-id="${teamId}"`
+      )}
     </section>
   `;
 }

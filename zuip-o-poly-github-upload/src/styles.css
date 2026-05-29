@@ -921,7 +921,7 @@ select:focus {
 .dice-panel {
   display: grid;
   gap: 12px;
-  padding: 15px;
+  padding: 15px 15px 76px;
   border: 1px solid rgba(244, 191, 69, 0.24);
   border-radius: var(--radius);
   background:
@@ -948,8 +948,18 @@ select:focus {
 
 .dice-stage {
   display: grid;
-  min-height: 132px;
+  min-height: 118px;
   place-items: center;
+}
+
+.roll-dice-button {
+  position: relative;
+  z-index: 14;
+  min-height: 56px;
+  margin-top: 2px;
+  box-shadow:
+    0 0 28px rgba(225, 25, 49, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .die {
