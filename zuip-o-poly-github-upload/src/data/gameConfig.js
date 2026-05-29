@@ -1,7 +1,7 @@
 export const GAME_CONFIG = {
   countdownSeconds: 10,
   startTileId: 1,
-  totalTeamsRequired: 3,
+  totalTeamsRequired: 4,
   displayRounds: 2,
   maxNormalTurns: 25,
   gameDurationSeconds: 2 * 60 * 60

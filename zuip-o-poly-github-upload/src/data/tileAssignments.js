@@ -95,9 +95,9 @@ export const TILE_ASSIGNMENTS = {
     label: "Kroeg",
     location: "Red Light's Nijmegen",
     popup: "\"IIk zieee het Rooode liiiccht, de gordijnen zijn…\" Goed, u kent het wel. Uit betrouwbare bronnen blijkt dat ze ook in Nimma hoertjes hebben, alleen denk ik niet dat die al aan het werk zijn momenteel. Zonde, want jullie hadden nog wel die Monopoly-dollar meegenomen! Ach ja, zo'n hoerentent blijft voor de één wat mysterieuzer dan voor de ander...",
-    teamText: "Bel je Kroegraad, en vraag wat de mystery-opdracht is!",
-    kroegraadSummary: "Mystery-opdracht: N.n.b.",
-    rules: "N.n.b."
+    teamText: "Haal voor ieder actief teamlid een drankje. Minimaal: 1 speciaal biertje, 1 zoet drankje en 1 vies shotje. Zet de drankjes random neer en nummer ze 1 t/m 3 of 1 t/m 4. Bel daarna de Kroegraad. Die kiest live welk nummer ieder teamlid moet drinken. Daarna adt iedereen direct zijn/haar toegewezen drankje.",
+    kroegraadSummary: "Het Red Light District staat bekend om impulsieve keuzes waar je later misschien spijt van krijgt. Het team haalt voor ieder actief teamlid een drankje. Minimaal: 1 speciaal biertje, 1 zoet drankje en 1 vies shotje. Ze zetten de drankjes random neer en nummeren ze 1 t/m 3 of 1 t/m 4. Eén teamlid belt de Kroegraad. De Kroegraad kiest live welk nummer ieder teamlid moet drinken. Daarna adt iedereen direct zijn/haar toegewezen drankje.",
+    rules: "1. Haal voor ieder actief teamlid een drankje.\nMinimaal: 1 speciaal biertje, 1 zoet drankje en 1 vies shotje.\n2. Zet ze random neer en nummer ze 1 t/m 3 of 1 t/m 4.\n3. Eén teamlid belt de Kroegraad.\n4. De Kroegraad kiest live welk nummer ieder teamlid moet drinken.\n5. Daarna adt iedereen direct zijn/haar toegewezen drankje."
   },
   11: {
     id: 11,

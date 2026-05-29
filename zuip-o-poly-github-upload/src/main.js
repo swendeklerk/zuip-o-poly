@@ -976,6 +976,11 @@ function renderKroegraadApp(session, state) {
   }
 
   if (state.phase === GAME_PHASE.RUNNING) {
+    if (state.timerFinishedAt) {
+      renderKroegraadFinished(session, state, displayName);
+      return;
+    }
+
     renderKroegraadRunning(session, state, displayName);
     return;
   }
@@ -1065,6 +1070,45 @@ function renderKroegraadRunning(session, state, displayName) {
   `;
 }
 
+function renderKroegraadFinished(session, state, displayName) {
+  const assigned = teamsForKroegraad(session.kroegraadId)
+    .map((team) => ({ team, teamState: state.teams[team.id] }));
+  const openReviewTeams = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD);
+
+  app.innerHTML = `
+    <section class="screen council-screen">
+      ${logoMarkup(true)}
+      ${renderRankingPanel(state)}
+      ${
+        openReviewTeams.length
+          ? `
+            <section class="council-section">
+              <div class="section-title-row">
+                <h2>Nog keuren</h2>
+                <span>${openReviewTeams.length}</span>
+              </div>
+              ${openReviewTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState, true)).join("")}
+            </section>
+          `
+          : ""
+      }
+      <div class="panel council-command">
+        <div class="council-command-top">
+          <div>
+            <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
+            <h2>Ingelogd als ${displayName}</h2>
+          </div>
+          <strong class="status-badge is-finished">Afgelopen</strong>
+        </div>
+        <div class="council-empty-review">Iedereen naar De Tempelier in Nijmegen. De Kroegraad maakt daar de winnaar bekend.</div>
+        <div class="council-actions">
+          ${button("Uitloggen", "ghost small", 'data-action="logout"')}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderCouncilTeamCard(team, teamState, focus = false) {
   const needsReview = teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
   const isBusy = teamState.status === TEAM_STATUS.TASK_ACTIVE || teamState.status === TEAM_STATUS.REJECTED;
@@ -1132,20 +1176,42 @@ function renderCouncilTeamCard(team, teamState, focus = false) {
 
 function renderRankingPanel(state) {
   const ranking = getRanking(state);
+  const winner = ranking[0];
   return `
-    <section class="panel ranking-panel">
+    <section class="panel ranking-panel final-ranking-panel">
       <p class="eyebrow">Eindstand</p>
-      <h2>Winnaar: ${ranking[0].team.name}</h2>
-      <ol>
-        ${ranking.map(({ team, teamState }) => `
-          <li>
-            <span>${team.name}</span>
-            <strong>${teamState.completedRounds} rondes · vak ${teamState.position}</strong>
+      <div class="winner-card" style="--team-accent:${winner.team.accent}">
+        ${teamBadge(winner.team)}
+        <span>Winnaar</span>
+        <h2>${winner.team.name}</h2>
+        <p>${winner.teamState.completedRounds} rondes · vak ${winner.teamState.position} · ${getTileName(winner.teamState.currentTileId)}</p>
+      </div>
+      <ol class="ranking-list">
+        ${ranking.map(({ team, teamState }, index) => `
+          <li style="--team-accent:${team.accent}">
+            <span class="rank-number">${index + 1}</span>
+            <div>
+              <strong>${team.name}</strong>
+              <p>${teamState.completedRounds} rondes · vak ${teamState.position} · ${getTileName(teamState.currentTileId)}</p>
+            </div>
+            <em>${formatReachedTime(teamState.positionReachedAt)}</em>
           </li>
         `).join("")}
       </ol>
+      <p class="final-location">Kom naar De Tempelier in Nijmegen.</p>
     </section>
   `;
+}
+
+function formatReachedTime(timestamp) {
+  if (!timestamp) {
+    return "-";
+  }
+
+  return new Date(timestamp).toLocaleTimeString("nl-NL", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function render() {
@@ -1480,6 +1546,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
+      rode: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";
@@ -1502,6 +1569,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
+      rode: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";
@@ -1520,6 +1588,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
+      rode: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";
@@ -1540,6 +1609,7 @@ function consumeLaunchParams() {
     const teamByView = {
       bruine: "team_bruine_kroeg",
       zwarte: "team_zwarte_pint",
+      rode: "team_rode_neus",
       witte: "team_witte_batavus"
     };
     const teamId = teamByView[view] ?? "team_bruine_kroeg";

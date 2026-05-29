@@ -2328,6 +2328,104 @@ body {
   white-space: nowrap;
 }
 
+.final-ranking-panel {
+  display: grid;
+  gap: 12px;
+  border-color: rgba(244, 191, 69, 0.42);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(244, 191, 69, 0.2), transparent 42%),
+    linear-gradient(180deg, rgba(238, 27, 47, 0.09), rgba(0, 0, 0, 0.18)),
+    rgba(13, 12, 14, 0.96);
+}
+
+.winner-card {
+  display: grid;
+  gap: 5px;
+  justify-items: center;
+  padding: 18px 12px;
+  border: 1px solid color-mix(in srgb, var(--team-accent) 74%, #ffffff 8%);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 16%, color-mix(in srgb, var(--team-accent) 24%, transparent), transparent 52%),
+    rgba(0, 0, 0, 0.42);
+  box-shadow:
+    0 0 28px color-mix(in srgb, var(--team-accent) 24%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.winner-card .team-badge {
+  margin-bottom: 4px;
+}
+
+.winner-card span {
+  color: var(--gold);
+  font-size: 0.76rem;
+  font-weight: 950;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.winner-card h2 {
+  margin: 0;
+  color: #fff7ec;
+  font-size: clamp(1.7rem, 8vw, 2.35rem);
+  line-height: 1;
+  text-shadow: 0 0 20px color-mix(in srgb, var(--team-accent) 34%, transparent);
+}
+
+.winner-card p,
+.ranking-list p,
+.final-location {
+  margin: 0;
+  color: rgba(255, 247, 236, 0.78);
+}
+
+.ranking-list li {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border-color: color-mix(in srgb, var(--team-accent) 42%, rgba(255, 255, 255, 0.12));
+}
+
+.rank-number {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--team-accent) 72%, #ffffff 10%);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff7ec;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.ranking-list strong {
+  color: #fff7ec;
+  font-size: 0.9rem;
+}
+
+.ranking-list em {
+  color: var(--gold);
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.final-location {
+  padding: 11px 12px;
+  border: 1px solid rgba(244, 191, 69, 0.26);
+  border-radius: 7px;
+  background: rgba(244, 191, 69, 0.08);
+  color: #fff7ec;
+  font-size: 0.88rem;
+  font-weight: 850;
+  text-align: center;
+}
+
 /* Screenshot-inspired mobile game layout */
 .app-shell {
   max-width: 430px;

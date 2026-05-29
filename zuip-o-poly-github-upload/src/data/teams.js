@@ -2,7 +2,7 @@ export const TEAMS = [
   {
     id: "team_bruine_kroeg",
     name: "Bruine Kroeg",
-    players: ["Swen", "Jilke", "Bart", "Fleur", "Eva"],
+    players: ["Swen", "Jilke", "Bart", "Fleur"],
     defaultActivePlayers: ["Swen", "Jilke", "Bart"],
     colorName: "Bruin",
     accent: "#8b5a2b",
@@ -13,8 +13,8 @@ export const TEAMS = [
   {
     id: "team_zwarte_pint",
     name: "Zwarte Pint",
-    players: ["Lars", "Iris", "Rick", "Sophie"],
-    defaultActivePlayers: ["Lars", "Iris", "Rick", "Sophie"],
+    players: ["Lars", "Iris", "Sophie", "Jelle D."],
+    defaultActivePlayers: ["Lars", "Iris", "Sophie"],
     colorName: "Zwart",
     accent: "#f5f5f5",
     code: "ZWARTEPINT",
@@ -22,10 +22,21 @@ export const TEAMS = [
     kroegraadId: "SWEN"
   },
   {
+    id: "team_rode_neus",
+    name: "Rode Neus",
+    players: ["Celeste", "Thijs", "Jelle H."],
+    defaultActivePlayers: ["Celeste", "Thijs", "Jelle H."],
+    colorName: "Rood",
+    accent: "#ee1b2f",
+    code: "RODENEUS",
+    password: "0000",
+    kroegraadId: "SWEN"
+  },
+  {
     id: "team_witte_batavus",
     name: "Witte Batavus",
-    players: ["Bryan", "Celeste", "Thijs", "Jelle"],
-    defaultActivePlayers: ["Bryan", "Celeste", "Thijs", "Jelle"],
+    players: ["Rick", "Eva", "Bryan"],
+    defaultActivePlayers: ["Rick", "Eva", "Bryan"],
     colorName: "Wit",
     accent: "#e8edf3",
     code: "WITTEBATAVUS",

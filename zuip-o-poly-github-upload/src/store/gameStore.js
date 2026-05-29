@@ -89,9 +89,18 @@ function normalizeState(input) {
   };
 
   for (const team of TEAMS) {
-    state.teams[team.id] = {
+    const mergedTeamState = {
       ...createTeamState(team),
       ...(input?.teams?.[team.id] ?? {})
+    };
+    const activePlayers = Array.isArray(mergedTeamState.activePlayers)
+      ? mergedTeamState.activePlayers
+      : [];
+    state.teams[team.id] = {
+      ...mergedTeamState,
+      activePlayers: activePlayers.every((name) => team.players.includes(name))
+        ? activePlayers
+        : team.defaultActivePlayers ?? team.players
     };
   }
 
@@ -399,6 +408,7 @@ export function startFinishedDemo(teamId = "team_bruine_kroeg") {
   const demoPositions = {
     team_bruine_kroeg: { completedRounds: 2, position: 14, lastRoll: 5 },
     team_zwarte_pint: { completedRounds: 1, position: 39, lastRoll: 3 },
+    team_rode_neus: { completedRounds: 1, position: 27, lastRoll: 4 },
     team_witte_batavus: { completedRounds: 2, position: 8, lastRoll: 6 }
   };
   const teamEntries = Object.fromEntries(
@@ -446,7 +456,7 @@ export function loginTeam(code) {
   if (!team) {
     return {
       ok: false,
-      message: "Deze teamcode herken ik niet. Gebruik BRUINEKROEG, ZWARTEPINT of WITTEBATAVUS."
+      message: "Deze teamcode herken ik niet. Gebruik BRUINEKROEG, ZWARTEPINT, RODENEUS of WITTEBATAVUS."
     };
   }
 
