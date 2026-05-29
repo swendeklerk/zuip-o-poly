@@ -539,7 +539,7 @@ function renderActivePlayCard(teamState, teamId, currentTile) {
       <section class="panel play-panel verdict-panel rejected-panel">
         <p class="eyebrow">Afgekeurd</p>
         <h2>AFGEKEURD</h2>
-        <p class="tile-type">Niet door de Kroegraad gekomen. Doe de straf en druk daarna opnieuw op de bewijsknop.</p>
+        <p class="tile-type">Doe eerst de straf. Stuur daarna bewijs van de straf en druk op de bewijsknop. Na goedkeuring komt dezelfde opdracht opnieuw terug.</p>
         ${renderTask(teamState)}
         ${renderActionButton(teamState, teamId)}
       </section>
@@ -1267,8 +1267,9 @@ function renderCouncilTeamCard(team, teamState, focus = false) {
         ? "is-finished"
         : "is-neutral";
   const waitingText = teamState.status === TEAM_STATUS.REJECTED
-    ? "Team moet opnieuw bewijs sturen."
+    ? "Team moet eerst strafbewijs sturen. Daarna doen ze de opdracht opnieuw."
     : "Team is bezig met opdracht. Wachten op bewijs.";
+  const reviewIsPenalty = teamState.reviewType === "rejection_penalty";
 
   return `
     <article class="team-card council-card ${needsReview ? "needs-review" : ""} ${focus ? "is-focus-card" : ""}" style="--team-accent:${team.accent}" data-status="${teamState.status}">
@@ -1292,25 +1293,25 @@ function renderCouncilTeamCard(team, teamState, focus = false) {
       ${
         needsReview && teamState.currentTask
           ? `
-            <p class="council-status is-hot">Check het bewijs en kies daarna hieronder.</p>
+            <p class="council-status is-hot">${reviewIsPenalty ? "Check het strafbewijs. Bij goedkeuring gaat het team terug naar dezelfde opdracht." : "Check het bewijs en kies daarna hieronder."}</p>
             <article class="task-card review-task">
-              <span class="review-label">Opdracht</span>
-              <h3>${teamState.currentTask.title}</h3>
-              <p>${teamState.currentTask.reviewBody ?? teamState.currentTask.body}</p>
+              <span class="review-label">${reviewIsPenalty ? "Strafbewijs" : "Opdracht"}</span>
+              <h3>${reviewIsPenalty ? "Afkeurstraf" : teamState.currentTask.title}</h3>
+              <p>${reviewIsPenalty ? (teamState.rejectionPenalty ?? "") : (teamState.currentTask.reviewBody ?? teamState.currentTask.body)}</p>
               ${
-                teamState.currentTask.rules
+                !reviewIsPenalty && teamState.currentTask.rules
                   ? `<p class="review-rules">${teamState.currentTask.rules}</p>`
                   : ""
               }
               ${
-                teamState.currentTask.reviewExtra
+                !reviewIsPenalty && teamState.currentTask.reviewExtra
                   ? `<p class="review-extra">${teamState.currentTask.reviewExtra}</p>`
                   : ""
               }
             </article>
             <div class="review-actions">
-              ${button("Goedkeuren", "approve", `data-action="approve-task" data-team-id="${team.id}"`)}
-              ${button("Afkeuren", "reject", `data-action="reject-task" data-team-id="${team.id}"`)}
+              ${button(reviewIsPenalty ? "Straf goedkeuren" : "Goedkeuren", "approve", `data-action="approve-task" data-team-id="${team.id}"`)}
+              ${button(reviewIsPenalty ? "Straf afkeuren" : "Afkeuren", "reject", `data-action="reject-task" data-team-id="${team.id}"`)}
             </div>
           `
           : ""

@@ -1,7 +1,7 @@
 import { DOCK17_DRINKS, getTileAssignment } from "./tileAssignments.js";
 
 export const REJECTION_PENALTY =
-  "Niet door de Kroegraad gekomen. Twee teamleden trekken als straf een koolzuurhoudend drankje van minimaal 330 ml. Daarna doen jullie dezelfde opdracht opnieuw.";
+  "Niet door de Kroegraad gekomen. Twee teamleden trekken als straf een koolzuurhoudend drankje van minimaal 330 ml. Stuur eerst bewijs van deze straf. Pas nadat de Kroegraad dit strafbewijs heeft goedgekeurd, doen jullie dezelfde opdracht opnieuw.";
 
 function cleanPlaceholder(value) {
   const text = String(value ?? "").trim();

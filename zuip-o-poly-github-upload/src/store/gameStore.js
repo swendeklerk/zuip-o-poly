@@ -60,6 +60,7 @@ function createTeamState(team) {
     savedPowerUps: [],
     rejectionPenalty: null,
     proofInWhatsapp: false,
+    reviewType: null,
     pendingBonusRoll: false,
     jailUntil: null,
     waitUntil: null,
@@ -1731,6 +1732,7 @@ export function submitProofInWhatsapp(teamId) {
         [teamId]: {
           ...teamState,
           proofInWhatsapp: true,
+          reviewType: teamState.status === TEAM_STATUS.REJECTED ? "rejection_penalty" : "task",
           activePopup: null,
           status: TEAM_STATUS.WAITING_KROEGRAAD
         }
@@ -1747,6 +1749,27 @@ export function approveTeamTask(kroegraadId, teamId) {
       return state;
     }
 
+    if (teamState.reviewType === "rejection_penalty") {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            proofInWhatsapp: false,
+            reviewType: null,
+            rejectionPenalty: null,
+            activePopup: {
+              title: "Straf goedgekeurd",
+              body: "De straf is goedgekeurd. Jullie originele opdracht staat weer klaar. Doe die opdracht opnieuw en stuur daarna opnieuw bewijs.",
+              kind: "approved"
+            },
+            status: TEAM_STATUS.TASK_ACTIVE
+          }
+        }
+      };
+    }
+
     return {
       ...state,
       teams: {
@@ -1754,6 +1777,7 @@ export function approveTeamTask(kroegraadId, teamId) {
         [teamId]: {
           ...teamState,
           proofInWhatsapp: false,
+          reviewType: null,
           activePopup: null,
           rejectionPenalty: null,
           status: getApprovedNextStatus(state, teamState)
@@ -1771,6 +1795,27 @@ export function rejectTeamTask(kroegraadId, teamId) {
       return state;
     }
 
+    if (teamState.reviewType === "rejection_penalty") {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            proofInWhatsapp: false,
+            reviewType: null,
+            activePopup: {
+              title: "Strafbewijs afgekeurd",
+              body: "Het strafbewijs is afgekeurd. Voer de straf opnieuw of duidelijker uit en stuur opnieuw bewijs.",
+              kind: "rejected"
+            },
+            rejectionPenalty: REJECTION_PENALTY,
+            status: TEAM_STATUS.REJECTED
+          }
+        }
+      };
+    }
+
     return {
       ...state,
       teams: {
@@ -1778,6 +1823,7 @@ export function rejectTeamTask(kroegraadId, teamId) {
         [teamId]: {
           ...teamState,
           proofInWhatsapp: false,
+          reviewType: null,
           activePopup: {
             title: "Afgekeurd",
             body: REJECTION_PENALTY,
