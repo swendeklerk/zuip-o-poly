@@ -1193,7 +1193,7 @@ function applyImmediateTaskEffect(state, teamId) {
   }
 
   if (task.effectType === "return_previous_street") {
-    return moveTeamToTile(state, teamId, teamState.lastStreetTileId ?? teamState.position, {
+    return moveTeamToTile(state, teamId, teamState.lastMove?.from ?? teamState.lastStreetTileId ?? teamState.position, {
       keepPopup: true,
       source: task.presentation
     });
@@ -1250,6 +1250,29 @@ function isProtectedFromTeamChoice(teamState) {
     teamState?.status === TEAM_STATUS.FINISHED ||
     getSavedPowerUps(teamState).some((powerUp) => powerUp.type === "shield")
   );
+}
+
+function getShieldPowerUp(teamState) {
+  return getSavedPowerUps(teamState).find((powerUp) => powerUp.type === "shield") ?? null;
+}
+
+function consumeShieldPowerUp(teamState, message) {
+  const shield = getShieldPowerUp(teamState);
+  if (!shield) {
+    return teamState;
+  }
+
+  return {
+    ...teamState,
+    savedPowerUp: null,
+    savedPowerUps: removeSavedPowerUp(teamState, shield.id),
+    activePopup: {
+      title: "Hong Beschermt",
+      body: message,
+      kind: "fund",
+      stage: "detail"
+    }
+  };
 }
 
 export function getTeamState(teamId, state = getState()) {
@@ -1411,7 +1434,7 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
       return state;
     }
 
-    if (isProtectedFromTeamChoice(targetState)) {
+    if (targetState.status === TEAM_STATUS.IN_JAIL || targetState.status === TEAM_STATUS.FINISHED) {
       return {
         ...state,
         teams: {
@@ -1424,6 +1447,29 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
               blockedChoiceMessage: "Dit team is tijdelijk beschermd. Kies een ander team."
             }
           }
+        }
+      };
+    }
+
+    const targetShield = getShieldPowerUp(targetState);
+    if (targetShield) {
+      const targetName = findTeamById(targetTeamId)?.name ?? "Het gekozen team";
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            activePopup: {
+              ...teamState.activePopup,
+              stage: "detail",
+              blockedChoiceMessage: `${targetName} had Hong Beschermt. Kies een ander team.`
+            }
+          },
+          [targetTeamId]: consumeShieldPowerUp(
+            targetState,
+            "Een ander team probeerde jullie te raken, maar Hong Beschermt heeft de actie geblokkeerd. Deze bescherming is nu gebruikt."
+          )
         }
       };
     }
@@ -1612,7 +1658,7 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
       const swappedAt = now();
       const targetName = findTeamById(targetTeamId)?.name ?? "Het gekozen team";
 
-      return {
+      const swappedState = {
         ...state,
         teams: {
           ...state.teams,
@@ -1652,6 +1698,11 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
           }
         }
       };
+
+      return applyImmediateTaskEffect(
+        applyImmediateTaskEffect(swappedState, teamId),
+        targetTeamId
+      );
     }
 
     return state;
@@ -2216,6 +2267,10 @@ export function useSavedPowerUp(teamId, powerUpId) {
     }
 
     if (selectedPowerUp.type === "skip_task") {
+      if (![TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.REJECTED].includes(teamState.status)) {
+        return state;
+      }
+
       return {
         ...state,
         teams: {
@@ -2281,6 +2336,10 @@ export function useSavedPowerUp(teamId, powerUpId) {
           }
         }
       };
+    }
+
+    if (selectedPowerUp.type === "shield") {
+      return state;
     }
 
     return {

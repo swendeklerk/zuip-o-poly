@@ -478,11 +478,15 @@ function renderTeamChoiceButtons(teamId) {
       ${otherTeams
         .map((team) => {
           const teamState = state.teams[team.id];
-          const protectedTeam =
+          const unavailableTeam =
             teamState.status === TEAM_STATUS.IN_JAIL ||
-            teamState.status === TEAM_STATUS.FINISHED ||
-            getSavedPowerUpsForUi(teamState).some((powerUp) => powerUp.type === "shield");
-          const label = protectedTeam ? `${team.name} beschermd` : team.name;
+            teamState.status === TEAM_STATUS.FINISHED;
+          const shieldedTeam = getSavedPowerUpsForUi(teamState).some((powerUp) => powerUp.type === "shield");
+          const label = unavailableTeam
+            ? `${team.name} beschermd`
+            : shieldedTeam
+              ? `${team.name} - Hong actief`
+              : team.name;
 
           return `<button
             class="choice-team-button"
@@ -490,7 +494,7 @@ function renderTeamChoiceButtons(teamId) {
             data-action="choose-team-target"
             data-team-id="${teamId}"
             data-target-team-id="${team.id}"
-            ${protectedTeam ? "disabled" : ""}
+            ${unavailableTeam ? "disabled" : ""}
             type="button"
           >${teamBadge(team)} <span>${label}</span></button>`;
         })
@@ -720,6 +724,49 @@ function renderPowerUpPanel(teamState, teamId) {
     return "";
   }
 
+  const getPowerUpAction = (powerUp) => {
+    if (powerUp.type === "skip_task") {
+      const usable = [TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.REJECTED].includes(teamState.status);
+      return {
+        label: usable ? "Inzetten" : "Bewaren",
+        disabled: !usable,
+        note: "Slaat een opdracht over zonder Kroegraad-keuring."
+      };
+    }
+
+    if (powerUp.type === "objection") {
+      const usable = teamState.status === TEAM_STATUS.REJECTED;
+      return {
+        label: usable ? "Bezwaar inzetten" : "Bewaren",
+        disabled: !usable,
+        note: "Alleen inzetbaar na een afkeuring."
+      };
+    }
+
+    if (powerUp.type === "jail_free") {
+      const usable = teamState.status === TEAM_STATUS.IN_JAIL;
+      return {
+        label: usable ? "Celvrij inzetten" : "Bewaren",
+        disabled: !usable,
+        note: "Alleen inzetbaar wanneer jullie echt in de cel zitten."
+      };
+    }
+
+    if (powerUp.type === "shield") {
+      return {
+        label: "Automatisch",
+        disabled: true,
+        note: "Blokkeert automatisch de eerstvolgende teamactie tegen jullie."
+      };
+    }
+
+    return {
+      label: "Bewaren",
+      disabled: true,
+      note: "Deze power-up blijft bewaard tot hij automatisch nodig is."
+    };
+  };
+
   return `
     <section class="powerup-panel">
       <div class="powerup-panel-header">
@@ -728,18 +775,23 @@ function renderPowerUpPanel(teamState, teamId) {
       </div>
       <div class="powerup-list">
         ${powerUps
-          .map((powerUp) => `
+          .map((powerUp) => {
+            const action = getPowerUpAction(powerUp);
+            return `
             <button
               class="powerup-use-button"
               data-action="use-powerup"
               data-team-id="${teamId}"
               data-powerup-id="${powerUp.id}"
+              ${action.disabled ? "disabled" : ""}
               type="button"
             >
               <span>${powerUp.label}</span>
-              <strong>Gebruiken</strong>
+              <strong>${action.label}</strong>
             </button>
-          `)
+            <p class="powerup-note">${action.note}</p>
+          `;
+          })
           .join("")}
       </div>
     </section>
