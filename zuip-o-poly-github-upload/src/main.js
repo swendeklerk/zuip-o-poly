@@ -59,6 +59,12 @@ const ui = {
 };
 const activeVanOudsSpins = new Map();
 let hasRenderedOnce = false;
+const diceRollState = {
+  teamId: null,
+  face: 3,
+  intervalId: null,
+  timeoutId: null
+};
 const VAN_OUDS_TICKER_ITEM_WIDTH = 150;
 const VAN_OUDS_TICKER_ITEM_GAP = 10;
 const VAN_OUDS_TICKER_PADDING = 10;
@@ -894,20 +900,21 @@ function renderDicePanel(teamState, teamId) {
     return "";
   }
 
-  const face = 3;
+  const isRolling = diceRollState.teamId === teamId;
+  const face = isRolling ? diceRollState.face : 3;
   return `
-    <section class="panel dice-panel">
-      <p class="eyebrow">${teamState.status === TEAM_STATUS.APPROVED ? "Goedgekeurd" : "Mag gooien"}</p>
-      <h2>${teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi de dobbelsteen"}</h2>
+    <section class="panel dice-panel ${isRolling ? "is-rolling" : ""}" data-dice-team-id="${teamId}">
+      <p class="eyebrow">${isRolling ? "Dobbelsteen rolt" : teamState.status === TEAM_STATUS.APPROVED ? "Goedgekeurd" : "Mag gooien"}</p>
+      <h2>${isRolling ? "Even rollen..." : teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi de dobbelsteen"}</h2>
       <div class="dice-stage" aria-hidden="true">
-        <div class="die die-${face}">
+        <div class="die die-${face} ${isRolling ? "is-rolling" : ""}">
           ${Array.from({ length: 6 }, (_, index) => `<span class="pip pip-${index + 1}"></span>`).join("")}
         </div>
       </div>
       ${button(
-        teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi dobbelsteen",
+        isRolling ? "Rollen..." : teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi dobbelsteen",
         "primary roll-dice-button",
-        `data-action="roll-dice" data-team-id="${teamId}"`
+        `data-action="roll-dice" data-team-id="${teamId}" ${isRolling ? "disabled" : ""}`
       )}
     </section>
   `;
@@ -960,6 +967,54 @@ function renderActionButton(teamState, teamId) {
   }
 
   return "";
+}
+
+function randomDiceFace() {
+  return Math.floor(Math.random() * 6) + 1;
+}
+
+function setVisibleDiceFace(teamId, face) {
+  const die = app.querySelector(`[data-dice-team-id="${teamId}"] .die`);
+  if (!die) {
+    return;
+  }
+
+  die.classList.remove("die-1", "die-2", "die-3", "die-4", "die-5", "die-6");
+  die.classList.add(`die-${face}`);
+}
+
+function startDiceRoll(teamId) {
+  if (!teamId || diceRollState.teamId) {
+    return;
+  }
+
+  diceRollState.teamId = teamId;
+  diceRollState.face = 3;
+  render({ soft: true });
+
+  diceRollState.intervalId = window.setInterval(() => {
+    diceRollState.face = randomDiceFace();
+    setVisibleDiceFace(teamId, diceRollState.face);
+  }, 70);
+
+  diceRollState.timeoutId = window.setTimeout(() => {
+    if (diceRollState.intervalId) {
+      window.clearInterval(diceRollState.intervalId);
+    }
+
+    const finalRoll = randomDiceFace();
+    diceRollState.face = finalRoll;
+    setVisibleDiceFace(teamId, finalRoll);
+
+    window.setTimeout(() => {
+      rollDice(teamId, finalRoll);
+      diceRollState.teamId = null;
+      diceRollState.face = 3;
+      diceRollState.intervalId = null;
+      diceRollState.timeoutId = null;
+      render({ soft: true });
+    }, 450);
+  }, 1050);
 }
 
 function renderKroegraadApp(session, state) {
@@ -1351,8 +1406,7 @@ app.addEventListener("click", (event) => {
   }
 
   if (action === "roll-dice") {
-    rollDice(actionTarget.dataset.teamId);
-    render();
+    startDiceRoll(actionTarget.dataset.teamId);
   }
 
   if (action === "submit-proof") {

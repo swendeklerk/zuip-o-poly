@@ -36,15 +36,16 @@ Voor lokale Supabase-config vul je `config.js` in. Gebruik alleen de Supabase `a
 
 ## Testflow
 
-1. Open drie aparte tabs of telefoons.
+1. Open vier aparte tabs of telefoons.
 2. Log de teams in met:
    - `BRUINEKROEG`
    - `ZWARTEPINT`
+   - `RODENEUS`
    - `WITTEBATAVUS`
 3. Open een Kroegraad-tab en log in met:
    - `SWEN` / `0805`
    - `LARS` / `0311`
-4. Start het spel zodra de checklist alle drie teams als ingelogd toont.
+4. Start het spel zodra de checklist alle vier teams als ingelogd toont.
 5. Alle ingelogde teams krijgen een countdown van 10 seconden.
 6. Na de countdown start de 2-uurs timer.
 7. Een team kan gooien, automatisch verplaatsen en een opdracht zien.

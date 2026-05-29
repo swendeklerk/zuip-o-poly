@@ -67,13 +67,17 @@ function createTeamState(team) {
     lastStreetTileId: null,
     lastMove: null,
     oncePerTeamCardIds: [],
-    fundDrawsUsed: 0
+    fundDrawsUsed: 0,
+    teamSyncRevision: 0,
+    teamSyncUpdatedAt: 0
   };
 }
 
 function createDefaultState() {
   return {
     version: 1,
+    syncRevision: 0,
+    syncUpdatedAt: 0,
     phase: GAME_PHASE.PRESTART,
     countdownStartedAt: null,
     gameStartedAt: null,
@@ -92,6 +96,8 @@ function normalizeState(input) {
     ...input,
     teams: {}
   };
+  state.syncRevision = Number.isFinite(input?.syncRevision) ? input.syncRevision : base.syncRevision;
+  state.syncUpdatedAt = Number.isFinite(input?.syncUpdatedAt) ? input.syncUpdatedAt : base.syncUpdatedAt;
   const bankCard = CARD_DECKS.fund.find((card) => card.id === "fund-op-gesprek-bij-de-bank");
 
   for (const team of TEAMS) {
@@ -130,6 +136,12 @@ function normalizeState(input) {
       fundDrawsUsed: Number.isFinite(mergedTeamState.fundDrawsUsed)
         ? mergedTeamState.fundDrawsUsed
         : 0,
+      teamSyncRevision: Number.isFinite(mergedTeamState.teamSyncRevision)
+        ? mergedTeamState.teamSyncRevision
+        : 0,
+      teamSyncUpdatedAt: Number.isFinite(mergedTeamState.teamSyncUpdatedAt)
+        ? mergedTeamState.teamSyncUpdatedAt
+        : 0,
       activePlayers: activePlayers.every((name) => team.players.includes(name))
         ? activePlayers
         : team.defaultActivePlayers ?? team.players
@@ -152,8 +164,47 @@ export function getState() {
   }
 }
 
-function saveState(state) {
-  const normalized = normalizeState(state);
+function getTeamComparableState(teamState) {
+  const { teamSyncRevision, teamSyncUpdatedAt, ...comparable } = teamState;
+  return comparable;
+}
+
+function didTeamChange(previousTeamState, nextTeamState) {
+  return JSON.stringify(getTeamComparableState(previousTeamState)) !==
+    JSON.stringify(getTeamComparableState(nextTeamState));
+}
+
+function prepareLocalStateForSave(state, previousState) {
+  const normalizedState = normalizeState(state);
+  const previous = previousState ? normalizeState(previousState) : normalizeState(getState());
+  const updatedAt = now();
+  const teams = { ...normalizedState.teams };
+
+  for (const team of TEAMS) {
+    const previousTeam = previous.teams[team.id] ?? createTeamState(team);
+    const nextTeam = teams[team.id] ?? createTeamState(team);
+    if (didTeamChange(previousTeam, nextTeam)) {
+      teams[team.id] = {
+        ...nextTeam,
+        teamSyncRevision: previousTeam.teamSyncRevision + 1,
+        teamSyncUpdatedAt: updatedAt
+      };
+    }
+  }
+
+  return {
+    ...normalizedState,
+    teams,
+    syncRevision: Math.max(normalizedState.syncRevision, previous.syncRevision) + 1,
+    syncUpdatedAt: updatedAt
+  };
+}
+
+function saveState(state, previousState = null) {
+  const normalizedState = normalizeState(state);
+  const normalized = applyingRemoteState
+    ? normalizedState
+    : prepareLocalStateForSave(normalizedState, previousState);
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   if (remoteSyncReady && !applyingRemoteState) {
     lastLocalSaveAt = now();
@@ -162,26 +213,115 @@ function saveState(state) {
   emit();
 }
 
-async function pullRemoteState() {
-  if (!remoteSyncReady || applyingRemoteState || now() - lastLocalSaveAt < 1200) {
-    return;
+function isEmptyPreparationState(state) {
+  return (
+    state.phase === GAME_PHASE.PRESTART &&
+    state.syncRevision === 0 &&
+    TEAMS.every((team) => !state.teams[team.id]?.loggedIn)
+  );
+}
+
+function shouldApplyRemoteState(remoteNormalized, localNormalized) {
+  if (JSON.stringify(remoteNormalized) === JSON.stringify(localNormalized)) {
+    return false;
   }
 
-  const remoteState = await loadRemoteGameState();
+  if (isEmptyPreparationState(localNormalized)) {
+    return true;
+  }
+
+  if (remoteNormalized.syncRevision > localNormalized.syncRevision) {
+    return true;
+  }
+
+  if (remoteNormalized.syncRevision < localNormalized.syncRevision) {
+    return false;
+  }
+
+  return (
+    remoteNormalized.syncUpdatedAt > localNormalized.syncUpdatedAt &&
+    now() - lastLocalSaveAt > 5000
+  );
+}
+
+function isRemoteGlobalNewer(remoteNormalized, localNormalized) {
+  if (remoteNormalized.syncRevision > localNormalized.syncRevision) {
+    return true;
+  }
+
+  if (remoteNormalized.syncRevision < localNormalized.syncRevision) {
+    return false;
+  }
+
+  return (
+    remoteNormalized.syncUpdatedAt > localNormalized.syncUpdatedAt &&
+    now() - lastLocalSaveAt > 5000
+  );
+}
+
+function isRemoteTeamNewer(remoteTeamState, localTeamState) {
+  if (remoteTeamState.teamSyncRevision > localTeamState.teamSyncRevision) {
+    return true;
+  }
+
+  if (remoteTeamState.teamSyncRevision < localTeamState.teamSyncRevision) {
+    return false;
+  }
+
+  return (
+    remoteTeamState.teamSyncUpdatedAt > localTeamState.teamSyncUpdatedAt &&
+    now() - lastLocalSaveAt > 5000
+  );
+}
+
+function mergeRemoteState(remoteNormalized, localNormalized) {
+  if (isEmptyPreparationState(localNormalized)) {
+    return remoteNormalized;
+  }
+
+  const useRemoteGlobal = isRemoteGlobalNewer(remoteNormalized, localNormalized);
+  const merged = {
+    ...(useRemoteGlobal ? remoteNormalized : localNormalized),
+    syncRevision: Math.max(remoteNormalized.syncRevision, localNormalized.syncRevision),
+    syncUpdatedAt: Math.max(remoteNormalized.syncUpdatedAt, localNormalized.syncUpdatedAt),
+    teams: {}
+  };
+
+  for (const team of TEAMS) {
+    const remoteTeam = remoteNormalized.teams[team.id] ?? createTeamState(team);
+    const localTeam = localNormalized.teams[team.id] ?? createTeamState(team);
+    merged.teams[team.id] = isRemoteTeamNewer(remoteTeam, localTeam) ? remoteTeam : localTeam;
+  }
+
+  return normalizeState(merged);
+}
+
+function applyRemoteState(remoteState) {
   if (!hasUsableRemoteState(remoteState)) {
-    return;
+    return false;
   }
 
   const remoteNormalized = normalizeState(remoteState);
   const localNormalized = normalizeState(getState());
-  if (JSON.stringify(remoteNormalized) === JSON.stringify(localNormalized)) {
-    return;
+  const mergedState = mergeRemoteState(remoteNormalized, localNormalized);
+  if (JSON.stringify(mergedState) === JSON.stringify(localNormalized)) {
+    return false;
   }
 
   applyingRemoteState = true;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteNormalized));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(mergedState));
   applyingRemoteState = false;
   emit();
+  return true;
+}
+
+async function pullRemoteState() {
+  if (!remoteSyncReady || applyingRemoteState || now() - lastLocalSaveAt < 2000) {
+    return;
+  }
+
+  const remoteState = await loadRemoteGameState();
+  applyRemoteState(remoteState);
 }
 
 function startRemotePolling() {
@@ -213,7 +353,7 @@ function startRemotePolling() {
 function updateState(updater) {
   const current = tickState(getState());
   const next = updater(current);
-  saveState(next);
+  saveState(next, current);
   return next;
 }
 
@@ -365,7 +505,7 @@ export function runClockTick() {
   const current = getState();
   const next = tickState(current);
   if (next !== current) {
-    saveState(next);
+    saveState(next, current);
   }
 }
 
@@ -385,10 +525,7 @@ export async function initializeRemoteSync() {
 
   const remoteState = await loadRemoteGameState();
   if (hasUsableRemoteState(remoteState)) {
-    applyingRemoteState = true;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(remoteState)));
-    applyingRemoteState = false;
-    emit();
+    applyRemoteState(remoteState);
   } else {
     const didSave = await saveRemoteGameState(getState());
     if (!didSave) {
@@ -397,10 +534,7 @@ export async function initializeRemoteSync() {
   }
 
   remoteUnsubscribe = await subscribeRemoteGameState((state) => {
-    applyingRemoteState = true;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(state)));
-    applyingRemoteState = false;
-    emit();
+    applyRemoteState(state);
   });
 
   remoteSyncReady = true;
@@ -1119,7 +1253,7 @@ export function getTeamState(teamId, state = getState()) {
   return state.teams[teamId];
 }
 
-export function rollDice(teamId) {
+export function rollDice(teamId, forcedRoll = null) {
   return updateState((state) => {
     const teamState = state.teams[teamId];
     const canRoll =
@@ -1134,7 +1268,9 @@ export function rollDice(teamId) {
     }
 
     const isBonusRoll = Boolean(teamState.pendingBonusRoll);
-    const roll = Math.floor(Math.random() * 6) + 1;
+    const roll = Number.isInteger(forcedRoll) && forcedRoll >= 1 && forcedRoll <= 6
+      ? forcedRoll
+      : Math.floor(Math.random() * 6) + 1;
     const rawPosition = teamState.position + roll;
     const { position: nextPosition, roundsGained } = normalizeBoardPosition(rawPosition);
     const completedRounds = teamState.completedRounds + roundsGained;
