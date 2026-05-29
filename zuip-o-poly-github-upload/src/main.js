@@ -58,6 +58,7 @@ const ui = {
   syncMode: "connecting"
 };
 const activeVanOudsSpins = new Map();
+let hasRenderedOnce = false;
 const VAN_OUDS_TICKER_ITEM_WIDTH = 150;
 const VAN_OUDS_TICKER_ITEM_GAP = 10;
 const VAN_OUDS_TICKER_PADDING = 10;
@@ -1219,28 +1220,56 @@ function formatReachedTime(timestamp) {
   });
 }
 
-function render() {
+function finishSoftRender(scrollY) {
+  window.requestAnimationFrame(() => {
+    const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+    window.scrollTo(0, Math.min(scrollY, maxScroll));
+    window.setTimeout(() => {
+      app.classList.remove("soft-refresh");
+    }, 0);
+  });
+}
+
+function render(options = {}) {
+  const soft = options.soft === true;
+  const scrollY = window.scrollY;
+  if (soft) {
+    app.classList.add("soft-refresh");
+  }
+
   runClockTick();
   const state = getState();
   const session = getCurrentSession();
 
   if (!session) {
     renderLoggedOut();
+    if (soft) {
+      finishSoftRender(scrollY);
+    }
     return;
   }
 
   if (session.role === "team") {
     renderTeamApp(session, state);
+    if (soft) {
+      finishSoftRender(scrollY);
+    }
     return;
   }
 
   if (session.role === "kroegraad") {
     renderKroegraadApp(session, state);
+    if (soft) {
+      finishSoftRender(scrollY);
+    }
     return;
   }
 
   clearCurrentSession();
   renderLoggedOut();
+  if (soft) {
+    finishSoftRender(scrollY);
+  }
 }
 
 function transitionRender() {
@@ -1634,7 +1663,10 @@ function consumeLaunchParams() {
 }
 
 consumeLaunchParams();
-subscribe(render);
+subscribe(() => {
+  render({ soft: hasRenderedOnce });
+  hasRenderedOnce = true;
+});
 if (ui.skipRemoteSync) {
   ui.syncMode = "demo";
   console.info("Zuip-O-Poly draait in lokale demo-modus.");
