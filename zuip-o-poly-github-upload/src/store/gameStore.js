@@ -17,6 +17,9 @@ const listeners = new Set();
 let remoteSyncReady = false;
 let applyingRemoteState = false;
 let remoteUnsubscribe = null;
+let remotePollInterval = null;
+let remoteFocusListenersReady = false;
+let lastLocalSaveAt = 0;
 
 function hasUsableRemoteState(state) {
   return Boolean(
@@ -150,11 +153,61 @@ export function getState() {
 }
 
 function saveState(state) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeState(state)));
+  const normalized = normalizeState(state);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   if (remoteSyncReady && !applyingRemoteState) {
-    saveRemoteGameState(normalizeState(state));
+    lastLocalSaveAt = now();
+    saveRemoteGameState(normalized);
   }
   emit();
+}
+
+async function pullRemoteState() {
+  if (!remoteSyncReady || applyingRemoteState || now() - lastLocalSaveAt < 1200) {
+    return;
+  }
+
+  const remoteState = await loadRemoteGameState();
+  if (!hasUsableRemoteState(remoteState)) {
+    return;
+  }
+
+  const remoteNormalized = normalizeState(remoteState);
+  const localNormalized = normalizeState(getState());
+  if (JSON.stringify(remoteNormalized) === JSON.stringify(localNormalized)) {
+    return;
+  }
+
+  applyingRemoteState = true;
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remoteNormalized));
+  applyingRemoteState = false;
+  emit();
+}
+
+function startRemotePolling() {
+  if (!remotePollInterval) {
+    remotePollInterval = window.setInterval(() => {
+      pullRemoteState();
+    }, 2500);
+  }
+
+  if (remoteFocusListenersReady) {
+    return;
+  }
+
+  window.addEventListener?.("focus", () => {
+    pullRemoteState();
+  });
+
+  if (typeof document !== "undefined") {
+    document.addEventListener?.("visibilitychange", () => {
+      if (!document.hidden) {
+        pullRemoteState();
+      }
+    });
+  }
+
+  remoteFocusListenersReady = true;
 }
 
 function updateState(updater) {
@@ -351,6 +404,8 @@ export async function initializeRemoteSync() {
   });
 
   remoteSyncReady = true;
+  startRemotePolling();
+  pullRemoteState();
   return { ok: true, mode: "remote" };
 }
 
@@ -359,6 +414,10 @@ export function stopRemoteSync() {
     remoteUnsubscribe();
   }
   remoteUnsubscribe = null;
+  if (remotePollInterval) {
+    window.clearInterval(remotePollInterval);
+  }
+  remotePollInterval = null;
   remoteSyncReady = false;
 }
 
