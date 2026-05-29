@@ -63,8 +63,11 @@ const diceRollState = {
   teamId: null,
   face: 3,
   intervalId: null,
-  timeoutId: null
+  timeoutId: null,
+  pendingRender: false
 };
+let softUpdateHoldUntil = 0;
+let deferredStoreRenderId = null;
 const VAN_OUDS_TICKER_ITEM_WIDTH = 150;
 const VAN_OUDS_TICKER_ITEM_GAP = 10;
 const VAN_OUDS_TICKER_PADDING = 10;
@@ -72,6 +75,33 @@ const VAN_OUDS_TICKER_PRE_ITEMS = 15;
 
 function isSyncBlocking() {
   return !ui.skipRemoteSync && ui.syncMode === "connecting";
+}
+
+function holdSoftUpdates(milliseconds = 700) {
+  softUpdateHoldUntil = Math.max(softUpdateHoldUntil, Date.now() + milliseconds);
+}
+
+function renderFromStoreUpdate() {
+  if (!hasRenderedOnce) {
+    render();
+    hasRenderedOnce = true;
+    return;
+  }
+
+  const waitMs = Math.max(0, softUpdateHoldUntil - Date.now());
+  if (diceRollState.teamId || waitMs > 0) {
+    if (deferredStoreRenderId) {
+      window.clearTimeout(deferredStoreRenderId);
+    }
+
+    deferredStoreRenderId = window.setTimeout(() => {
+      deferredStoreRenderId = null;
+      renderFromStoreUpdate();
+    }, diceRollState.teamId ? 220 : waitMs + 40);
+    return;
+  }
+
+  render({ soft: true });
 }
 
 function renderSyncWarning() {
@@ -988,6 +1018,7 @@ function startDiceRoll(teamId) {
     return;
   }
 
+  holdSoftUpdates(1800);
   diceRollState.teamId = teamId;
   diceRollState.face = 3;
   render({ soft: true });
@@ -1012,6 +1043,7 @@ function startDiceRoll(teamId) {
       diceRollState.face = 3;
       diceRollState.intervalId = null;
       diceRollState.timeoutId = null;
+      diceRollState.pendingRender = false;
       render({ soft: true });
     }, 450);
   }, 1050);
@@ -1345,6 +1377,7 @@ app.addEventListener("click", (event) => {
     return;
   }
 
+  holdSoftUpdates(750);
   ui.error = "";
   ui.notice = "";
 
@@ -1492,6 +1525,7 @@ app.addEventListener("click", (event) => {
   }
 
   if (action === "dock17-reveal") {
+    holdSoftUpdates(1000);
     actionTarget.disabled = true;
     actionTarget.closest(".dock17-flow")?.classList.add("is-revealing");
     window.setTimeout(() => {
@@ -1506,6 +1540,7 @@ app.addEventListener("click", (event) => {
   }
 
   if (action === "van-ouds-spin") {
+    holdSoftUpdates(3100);
     const result = chooseVanOudsResult(actionTarget.dataset.teamId);
     const tickerItems = createVanOudsTickerItems(result);
     actionTarget.disabled = true;
@@ -1548,6 +1583,7 @@ app.addEventListener("click", (event) => {
   }
 
   if (action === "use-powerup") {
+    holdSoftUpdates(1100);
     const powerupPanel = actionTarget.closest(".powerup-panel");
     actionTarget.disabled = true;
     powerupPanel?.classList.add("is-activating");
@@ -1564,6 +1600,7 @@ app.addEventListener("change", (event) => {
     return;
   }
 
+  holdSoftUpdates(750);
   updateDock17Choice(target.dataset.teamId, target.dataset.choiceId, target.value);
   render();
 });
@@ -1571,6 +1608,7 @@ app.addEventListener("change", (event) => {
 app.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = event.target;
+  holdSoftUpdates(900);
   ui.error = "";
   ui.notice = "";
 
@@ -1717,10 +1755,7 @@ function consumeLaunchParams() {
 }
 
 consumeLaunchParams();
-subscribe(() => {
-  render({ soft: hasRenderedOnce });
-  hasRenderedOnce = true;
-});
+subscribe(renderFromStoreUpdate);
 if (ui.skipRemoteSync) {
   ui.syncMode = "demo";
   console.info("Zuip-O-Poly draait in lokale demo-modus.");

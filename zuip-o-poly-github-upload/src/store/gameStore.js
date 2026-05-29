@@ -304,7 +304,15 @@ function applyRemoteState(remoteState) {
   const remoteNormalized = normalizeState(remoteState);
   const localNormalized = normalizeState(getState());
   const mergedState = mergeRemoteState(remoteNormalized, localNormalized);
-  if (JSON.stringify(mergedState) === JSON.stringify(localNormalized)) {
+  const mergedMatchesRemote = JSON.stringify(mergedState) === JSON.stringify(remoteNormalized);
+  const mergedMatchesLocal = JSON.stringify(mergedState) === JSON.stringify(localNormalized);
+
+  if (!mergedMatchesRemote && remoteSyncReady && !applyingRemoteState) {
+    lastLocalSaveAt = now();
+    saveRemoteGameState(mergedState);
+  }
+
+  if (mergedMatchesLocal) {
     return false;
   }
 
