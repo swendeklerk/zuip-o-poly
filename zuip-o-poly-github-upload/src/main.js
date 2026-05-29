@@ -1044,6 +1044,7 @@ function renderKroegraadRunning(session, state, displayName) {
         }
         <div class="council-actions">
           ${button(state.paused ? "Spel hervatten" : "Spel pauzeren", "ghost", 'data-action="toggle-pause"')}
+          ${button("Noodreset spel", "ghost small danger", 'data-action="reset-prep" data-force="true"')}
           ${button("Uitloggen", "ghost small", 'data-action="logout"')}
         </div>
       </div>
@@ -1285,8 +1286,10 @@ app.addEventListener("click", (event) => {
   }
 
   if (action === "reset-prep") {
-    resetPreparation();
-    ui.notice = "Voorbereiding is gereset.";
+    resetPreparation({ force: actionTarget.dataset.force === "true" });
+    ui.notice = actionTarget.dataset.force === "true"
+      ? "Spelstand is volledig gereset."
+      : "Voorbereiding is gereset.";
     render();
   }
 

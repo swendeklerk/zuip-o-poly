@@ -184,10 +184,10 @@ export const TILE_ASSIGNMENTS = {
     type: "Straatvak",
     label: "Kroeg",
     location: "Poolcafé",
-    popup: "Het Poolcafé: Dé plek waar twee van de leukste dingen bij elkaar samenkomen; Sporten en zuipen. Daar kunnen we wel iets mee…",
-    teamText: "Je begint met 10 biertjes. Pak nu de tennisbal uit de tas, en laat één persoon deze zo vaak mogelijk met zijn voeten hooghouden. De 10 biertjes worden verminderd met het aantal keer correct hooggehouden. Let op! Je krijgt slechts één poging om hoog te houden, en de ondergrens is één biertje.",
-    kroegraadSummary: "Teller start op 10 bier. Elke correcte keer hooggehouden is -1 biertje (dus 6x hooghouden wordt 10-6= 4 biertjes voor het team).",
-    rules: "Elke keer hooghouden is -1 biertje. Slechts één iemand mag één poging doen om hoog te houden. Ervan uitgaande dat dit eerlijk gedaan zal worden…..!\nOndergrens is één biertje, dus altijd drinken."
+    popup: "Het Poolcafé: dé plek waar sporten en zuipen samenkomen. Alleen deze keer kijkt de Kroegraad live mee.",
+    teamText: "Je begint met 10 biertjes. Pak de tennisbal uit de tas en FaceTime jullie toegewezen Kroegraad voordat jullie beginnen. Terwijl de Kroegraad live meekijkt, laat één persoon de bal zo vaak mogelijk met zijn voeten hooghouden. De 10 biertjes worden verminderd met het aantal keer correct hooggehouden. Let op: je krijgt slechts één poging, en de ondergrens is één biertje.",
+    kroegraadSummary: "Team FaceTimet de toegewezen Kroegraad bij Poolcafé. Teller start op 10 bier. Eén persoon houdt de tennisbal live hoog met zijn voeten. Elke correcte keer hooghouden is -1 biertje. Kroegraad kijkt live mee en bepaalt het aantal correcte pogingen.",
+    rules: "FaceTime met de toegewezen Kroegraad is verplicht. Eén persoon krijgt één poging om hoog te houden. Elke correcte keer hooghouden is -1 biertje. Ondergrens is één biertje, dus altijd drinken."
   },
   20: {
     id: 20,

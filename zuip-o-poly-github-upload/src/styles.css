@@ -420,6 +420,14 @@ select:focus {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.button.danger {
+  border-color: rgba(238, 27, 47, 0.55);
+  background:
+    linear-gradient(180deg, rgba(238, 27, 47, 0.18), rgba(238, 27, 47, 0.06)),
+    rgba(255, 255, 255, 0.035);
+  color: #ffd7dc;
+}
+
 .button.disabled {
   background: #4d4d55;
   color: #c9c9ce;
@@ -1551,7 +1559,7 @@ select:focus {
   gap: 10px;
   justify-items: center;
   margin-inline: 0;
-  padding: 10px;
+  padding: 10px 10px 78px;
 }
 
 .board-header {
@@ -1580,8 +1588,9 @@ select:focus {
   grid-template-columns: repeat(11, minmax(0, 1fr));
   grid-template-rows: repeat(11, minmax(0, 1fr));
   gap: 1px;
-  width: 100%;
+  width: min(100%, 360px, calc(100dvh - 360px));
   max-width: 394px;
+  min-width: min(100%, 300px);
   aspect-ratio: 1;
   justify-self: center;
   padding: 2px;
