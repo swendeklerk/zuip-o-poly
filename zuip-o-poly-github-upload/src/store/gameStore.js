@@ -62,7 +62,9 @@ function createTeamState(team) {
     waitUntil: null,
     activePlayers: team.defaultActivePlayers ?? team.players,
     lastStreetTileId: null,
-    lastMove: null
+    lastMove: null,
+    oncePerTeamCardIds: [],
+    fundDrawsUsed: 0
   };
 }
 
@@ -87,6 +89,7 @@ function normalizeState(input) {
     ...input,
     teams: {}
   };
+  const bankCard = CARD_DECKS.fund.find((card) => card.id === "fund-op-gesprek-bij-de-bank");
 
   for (const team of TEAMS) {
     const mergedTeamState = {
@@ -96,8 +99,34 @@ function normalizeState(input) {
     const activePlayers = Array.isArray(mergedTeamState.activePlayers)
       ? mergedTeamState.activePlayers
       : [];
+    const oncePerTeamCardIds = Array.isArray(mergedTeamState.oncePerTeamCardIds)
+      ? mergedTeamState.oncePerTeamCardIds
+      : [];
+    const currentTask =
+      bankCard && mergedTeamState.currentTask?.cardId === bankCard.id
+        ? {
+            ...mergedTeamState.currentTask,
+            body: bankCard.body,
+            popup: bankCard.popup,
+            reviewBody: bankCard.reviewBody,
+            rules: bankCard.rules
+          }
+        : mergedTeamState.currentTask;
+    const activePopup =
+      bankCard && mergedTeamState.activePopup?.cardId === bankCard.id
+        ? {
+            ...mergedTeamState.activePopup,
+            body: bankCard.popup
+          }
+        : mergedTeamState.activePopup;
     state.teams[team.id] = {
       ...mergedTeamState,
+      currentTask,
+      activePopup,
+      oncePerTeamCardIds,
+      fundDrawsUsed: Number.isFinite(mergedTeamState.fundDrawsUsed)
+        ? mergedTeamState.fundDrawsUsed
+        : 0,
       activePlayers: activePlayers.every((name) => team.players.includes(name))
         ? activePlayers
         : team.defaultActivePlayers ?? team.players
@@ -643,9 +672,13 @@ function createTaskFromCard(card, presentation) {
   return {
     title: card.title,
     body: card.body,
+    popup: card.popup,
+    reviewBody: card.reviewBody,
+    rules: card.rules,
     placeholder: card.effectType !== "task",
     presentation,
     cardId: card.id,
+    oncePerTeam: Boolean(card.oncePerTeam),
     effectType: card.effectType,
     delta: card.delta ?? 0,
     waitSeconds: card.waitSeconds ?? null,
@@ -717,6 +750,37 @@ function withSpecialTaskMeta(task, teamState) {
   return withCafeVanOudsMeta(withDock17Meta(task, teamState), teamState);
 }
 
+function drawCardForTeam(type, teamState) {
+  const deckType = type === "fund" ? "fund" : "chance";
+  const deck = CARD_DECKS[deckType] ?? CARD_DECKS.chance;
+  const usedOnceCards = teamState.oncePerTeamCardIds ?? [];
+
+  if (deckType === "fund") {
+    const bankCard = deck.find((card) => card.id === "fund-op-gesprek-bij-de-bank");
+    if (bankCard && !usedOnceCards.includes(bankCard.id) && (teamState.fundDrawsUsed ?? 0) >= 1) {
+      return bankCard;
+    }
+  }
+
+  const eligibleCards = deck.filter((card) => !card.oncePerTeam);
+  return eligibleCards[Math.floor(Math.random() * eligibleCards.length)] ?? drawCard(deckType);
+}
+
+function markOncePerTeamCard(teamState, task) {
+  if (!task?.oncePerTeam || !task.cardId) {
+    return teamState.oncePerTeamCardIds ?? [];
+  }
+
+  return Array.from(new Set([...(teamState.oncePerTeamCardIds ?? []), task.cardId]));
+}
+
+function getTaskTrackingFields(teamState, task) {
+  return {
+    oncePerTeamCardIds: markOncePerTeamCard(teamState, task),
+    fundDrawsUsed: (teamState.fundDrawsUsed ?? 0) + (task?.presentation === "fund" ? 1 : 0)
+  };
+}
+
 function getVanOudsSummary(choices) {
   return choices
     .filter((choice) => choice.result)
@@ -747,7 +811,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
   const { position, roundsGained } = normalizeBoardPosition(rawPosition);
   const tile = findTileById(position);
   const crossedStart = roundsGained > 0 || position === 1;
-  const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile);
+  const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile, teamState);
   const task = withSpecialTaskMeta(baseTask, { ...teamState, currentTileId: position });
   const movedAt = now();
 
@@ -773,6 +837,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
           : options.keepPopup ? teamState.activePopup : null,
         rejectionPenalty: null,
         proofInWhatsapp: false,
+        ...getTaskTrackingFields(teamState, task),
         lastStreetTileId: tile.type === "Straatvak" ? position : teamState.lastStreetTileId,
         lastMove: {
           roll: teamState.lastMove?.roll ?? teamState.lastRoll,
@@ -799,7 +864,10 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
 function moveTeamToTile(state, teamId, position, options = {}) {
   const teamState = state.teams[teamId];
   const tile = findTileById(position);
-  const task = withSpecialTaskMeta(createTaskFromTileBehavior(tile), { ...teamState, currentTileId: position });
+  const task = withSpecialTaskMeta(createTaskFromTileBehavior(tile, teamState), {
+    ...teamState,
+    currentTileId: position
+  });
   const movedAt = now();
 
   return {
@@ -815,6 +883,7 @@ function moveTeamToTile(state, teamId, position, options = {}) {
         activePopup: options.keepPopup ? teamState.activePopup : null,
         rejectionPenalty: null,
         proofInWhatsapp: false,
+        ...getTaskTrackingFields(teamState, task),
         lastStreetTileId: tile.type === "Straatvak" ? position : teamState.lastStreetTileId,
         lastMove: {
           roll: teamState.lastMove?.roll ?? teamState.lastRoll,
@@ -862,7 +931,7 @@ function sendTeamToJail(state, teamId) {
 }
 
 function createTaskForCurrentTile(teamState) {
-  return createTaskFromTileBehavior(findTileById(teamState.currentTileId));
+  return createTaskFromTileBehavior(findTileById(teamState.currentTileId), teamState);
 }
 
 function setTargetNotification(state, teamId, title, body, kind = "chance") {
@@ -989,7 +1058,7 @@ export function rollDice(teamId) {
     const completedRounds = teamState.completedRounds + roundsGained;
     const tile = findTileById(nextPosition);
     const crossedStart = roundsGained > 0 || nextPosition === 1;
-    const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile);
+    const baseTask = crossedStart ? createStartBonusTask() : createTaskFromTileBehavior(tile, teamState);
     const task = withSpecialTaskMeta(baseTask, { ...teamState, currentTileId: nextPosition });
     const movedAt = now();
     const nextState = {
@@ -1017,6 +1086,7 @@ export function rollDice(teamId) {
             : null,
           rejectionPenalty: null,
           proofInWhatsapp: false,
+          ...getTaskTrackingFields(teamState, task),
           lastStreetTileId: tile.type === "Straatvak" ? nextPosition : teamState.lastStreetTileId,
           lastMove: {
             roll,
@@ -1036,14 +1106,14 @@ export function rollDice(teamId) {
   });
 }
 
-function createTaskFromTileBehavior(tile) {
+function createTaskFromTileBehavior(tile, teamState = null) {
   if (tile.type === "Kans") {
-    const card = drawCard("chance");
+    const card = teamState ? drawCardForTeam("chance", teamState) : drawCard("chance");
     return createTaskFromCard(card, "chance");
   }
 
   if (tile.type === "Algemeen Fonds") {
-    const card = drawCard("fund");
+    const card = teamState ? drawCardForTeam("fund", teamState) : drawCard("fund");
     return createTaskFromCard(card, "fund");
   }
 
@@ -1305,11 +1375,11 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
     if (task.effectType === "swap_positions") {
       const actorTile = findTileById(targetState.position);
       const targetTile = findTileById(teamState.position);
-      const actorTask = withSpecialTaskMeta(createTaskFromTileBehavior(actorTile), {
+      const actorTask = withSpecialTaskMeta(createTaskFromTileBehavior(actorTile, teamState), {
         ...teamState,
         currentTileId: targetState.position
       });
-      const targetTask = withSpecialTaskMeta(createTaskFromTileBehavior(targetTile), {
+      const targetTask = withSpecialTaskMeta(createTaskFromTileBehavior(targetTile, targetState), {
         ...targetState,
         currentTileId: teamState.position
       });
@@ -1328,6 +1398,7 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
             currentTask: actorTask,
             proofInWhatsapp: false,
             rejectionPenalty: null,
+            ...getTaskTrackingFields(teamState, actorTask),
             status: TEAM_STATUS.TASK_ACTIVE,
             activePopup: {
               title: "Wisseltruc gelukt",
@@ -1344,6 +1415,7 @@ export function applyTeamChoiceEffect(teamId, targetTeamId) {
             currentTask: targetTask,
             proofInWhatsapp: false,
             rejectionPenalty: null,
+            ...getTaskTrackingFields(targetState, targetTask),
             status: TEAM_STATUS.TASK_ACTIVE,
             activePopup: {
               title: "Jullie zijn gewisseld",
@@ -1528,8 +1600,9 @@ export function demoDrawCard(teamId, type) {
       return state;
     }
 
-    const card = drawCard(type === "fund" ? "fund" : "chance");
-    const task = createTaskFromCard(card, type === "fund" ? "fund" : "chance");
+    const deckType = type === "fund" ? "fund" : "chance";
+    const card = drawCardForTeam(deckType, teamState);
+    const task = createTaskFromCard(card, deckType);
 
     const nextState = {
       ...state,
@@ -1547,6 +1620,7 @@ export function demoDrawCard(teamId, type) {
           },
           proofInWhatsapp: false,
           rejectionPenalty: null,
+          ...getTaskTrackingFields(teamState, task),
           status: TEAM_STATUS.TASK_ACTIVE
         }
       }

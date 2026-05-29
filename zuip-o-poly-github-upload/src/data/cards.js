@@ -64,6 +64,20 @@ const CHANCE_CARDS = [
 
 const FUND_CARDS = [
   {
+    id: "fund-op-gesprek-bij-de-bank",
+    title: "Op gesprek bij de Bank",
+    popup:
+      "Oei! Een gesprek bij de bank kan natuurlijk heel goed uitpakken, maar ook heel slecht...",
+    body:
+      "Er is iets opgedoken in de administratie van Zuip-O-Poly... De Bank heeft jullie dossier geopend, en onderzoekt momenteel of er nog een alcoholschuld openstaat, of dat er juist een alcoholische meevaller is gevonden.\n\nBel De Bank om er achter te komen:\n+31 6 49 89 84 74",
+    reviewBody:
+      "Team belt de Bank. De Bank kiest live of het team een alcoholschuld moet aflossen of een alcoholische meevaller krijgt. Mogelijkheden: ieder actief teamlid drinkt een biertje, ieder actief teamlid neemt een shotje naar keuze van De Bank, of het team deelt bier/shotjes uit aan ieder actief teamlid van een gekozen team. De uitspraak van De Bank is definitief.",
+    rules:
+      "De Bank mag extra voorwaarden toevoegen zolang het met drinken te maken heeft. Team hoeft in de app alleen bewijs aan te leveren van de uitgevoerde uitkomst.",
+    effectType: "task",
+    oncePerTeam: true
+  },
+  {
     id: "fund-rondje-van-de-zaak",
     title: "Rondje Van De Zaak",
     body:
