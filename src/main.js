@@ -1,1853 +1,1268 @@
-import { GAME_CONFIG, TEAM_RULES } from "./data/gameConfig.js";
 import { getBoardCells } from "./data/board.js";
-import { TEAM_STATUS, GAME_PHASE } from "./data/statuses.js";
-import { KROEGRAAD_USERS, TEAMS, findTeamById, teamsForKroegraad } from "./data/teams.js";
-import { findTileById } from "./data/tiles.js";
 import { getTileTheme } from "./data/tileThemes.js";
-import { CAFE_VAN_OUDS_WHEEL_OPTIONS } from "./data/tileAssignments.js";
+import { findTileById } from "./data/tiles.js";
 import {
-  allTeamsLoggedIn,
-  approveTeamTask,
-  clearCurrentSession,
+  DEFAULT_MODE_ID,
+  findGameMode,
+  findTeamColor,
+  GAME_CONFIG,
+  GAME_MODES,
+  TEAM_COLORS,
+  TEAM_RULES
+} from "./data/gameConfig.js";
+import { GAME_PHASE, STATUS_META, TEAM_STATUS } from "./data/statuses.js";
+import {
+  chooseTeam,
+  clearSession,
+  confirmTask,
+  createRoom,
+  dismissPopup,
+  fetchRoom,
+  getChoosableTeams,
   getCountdownRemaining,
-  getCurrentSession,
+  getRanking,
+  getSession,
   getState,
-  getTeamState,
+  getTaskConfirmRemaining,
   getTeamCountdownSeconds,
-  loginKroegraad,
-  loginTeamWithPassword,
-  rejectTeamTask,
-  resetPreparation,
+  initializeRemoteSync,
+  isSessionActive,
+  joinRoom,
+  normalizeRoomCode,
+  resolveChoiceWithoutTarget,
+  revealDock17Choices,
+  revealPopupCard,
   rollDice,
   runClockTick,
-  startCountdown,
-  startTeamDemo,
-  startLobbyDemo,
-  startFinishedDemo,
-  submitProofInWhatsapp,
-  dismissTeamPopup,
-  revealTeamPopupCard,
-  applyTeamChoiceEffect,
-  demoResolveTeamTask,
-  demoDrawCard,
-  demoDrawTeamChoiceCard,
-  demoEnterWisselstation,
-  demoEnterDock17,
-  demoEnterCafeVanOuds,
+  setPlayerCount,
+  skipTask,
+  spinVanOudsWheel,
+  startGame,
+  subscribe,
+  takeoverTeam,
   updateDock17Choice,
-  addDock17Player,
-  revealDock17Choices,
-  addCafeVanOudsPlayer,
-  spinCafeVanOudsWheel,
-  useSavedPowerUp,
-  initializeRemoteSync,
-  togglePause,
-  releaseTeamSession,
-  getRanking,
-  subscribe
+  usePowerUp
 } from "./store/gameStore.js";
 
-const app = document.querySelector("#app");
+const app = document.getElementById("app");
+
+/* ------------------------------------------------------------------ */
+/* Lokale UI-status (geen spelstand — die leeft in de store)           */
+/* ------------------------------------------------------------------ */
+
 const ui = {
-  loginMode: "team",
-  teamTab: "play",
-  error: "",
-  notice: "",
-  demoToolsVisible: false,
-  skipRemoteSync: false,
-  syncMode: "connecting"
+  screen: "home", // home | create | join
+  createModeId: DEFAULT_MODE_ID,
+  createColorId: TEAM_COLORS[0].id,
+  createPlayerCount: 3,
+  joinCode: "",
+  joinFetchedState: null,
+  joinColorId: null,
+  joinPlayerCount: 3,
+  joinError: "",
+  createError: "",
+  dialog: null, // {type:"skip"} | {type:"choose", targetId} | {type:"leave"}
+  syncMode: "connecting", // connecting | remote | local
+  copied: false
 };
-const activeVanOudsSpins = new Map();
-let hasRenderedOnce = false;
-const diceRollState = {
-  teamId: null,
-  face: 3,
-  intervalId: null,
-  timeoutId: null,
-  pendingRender: false
-};
-let softUpdateHoldUntil = 0;
-let deferredStoreRenderId = null;
-const VAN_OUDS_TICKER_ITEM_WIDTH = 150;
-const VAN_OUDS_TICKER_ITEM_GAP = 10;
-const VAN_OUDS_TICKER_PADDING = 10;
-const VAN_OUDS_TICKER_PRE_ITEMS = 15;
 
-function isSyncBlocking() {
-  return !ui.skipRemoteSync && ui.syncMode === "connecting";
+function esc(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
 }
 
-function holdSoftUpdates(milliseconds = 700) {
-  softUpdateHoldUntil = Math.max(softUpdateHoldUntil, Date.now() + milliseconds);
+function nl2br(value) {
+  return esc(value).replaceAll("\n", "<br />");
 }
 
-function renderFromStoreUpdate() {
-  if (!hasRenderedOnce) {
-    render();
-    hasRenderedOnce = true;
-    return;
-  }
+function fmtTime(totalSeconds) {
+  const seconds = Math.max(Number(totalSeconds) || 0, 0);
+  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+  const ss = String(seconds % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
 
-  const waitMs = Math.max(0, softUpdateHoldUntil - Date.now());
-  if (diceRollState.teamId || waitMs > 0) {
-    if (deferredStoreRenderId) {
-      window.clearTimeout(deferredStoreRenderId);
+/* ------------------------------------------------------------------ */
+/* Renderloop                                                          */
+/* ------------------------------------------------------------------ */
+
+let renderQueued = false;
+
+function render() {
+  // Niet midden in de dobbelsteenanimatie opnieuw renderen.
+  if (document.querySelector(".dice-panel.is-rolling")) {
+    if (!renderQueued) {
+      renderQueued = true;
+      window.setTimeout(() => {
+        renderQueued = false;
+        render();
+      }, 950);
     }
-
-    deferredStoreRenderId = window.setTimeout(() => {
-      deferredStoreRenderId = null;
-      renderFromStoreUpdate();
-    }, diceRollState.teamId ? 220 : waitMs + 40);
     return;
   }
 
-  render({ soft: true });
-}
+  const session = getSession();
+  const state = getState();
 
-function renderSyncWarning() {
-  if (ui.skipRemoteSync || ui.syncMode !== "local") {
-    return "";
+  if (!session?.roomCode || !state) {
+    renderEntry();
+    return;
   }
 
+  const teamState = state.teams[session.teamId];
+  if (!teamState) {
+    renderEntry("Je team bestaat niet (meer) in deze spelkamer.");
+    return;
+  }
+
+  if (!isSessionActive(state, session)) {
+    renderTakeover(state, session, teamState);
+    return;
+  }
+
+  if (state.phase === GAME_PHASE.LOBBY) {
+    renderLobby(state, teamState);
+    return;
+  }
+
+  if (state.phase === GAME_PHASE.COUNTDOWN) {
+    renderCountdown(state, teamState);
+    return;
+  }
+
+  if (state.phase === GAME_PHASE.ENDED) {
+    renderEnded(state, teamState);
+    return;
+  }
+
+  renderGame(state, teamState);
+}
+
+/* ------------------------------------------------------------------ */
+/* Bouwstenen                                                          */
+/* ------------------------------------------------------------------ */
+
+function brandHeader(subtitle = "Niet zomaar een kroegentocht.") {
   return `
-    <div class="sync-warning">
-      Niet live verbonden. Deze telefoon draait lokaal.
-    </div>
+    <header class="brand-header">
+      <img class="brand-logo" src="./assets/zuipopoly-logo-full.svg" alt="Zuip-O-Poly" />
+      <p class="brand-slogan">${esc(subtitle)}</p>
+    </header>
   `;
 }
 
-function logoMarkup(compact = false) {
-  const imageSrc = compact
-    ? "./assets/zuipopoly-banner-normalized.svg"
-    : "./assets/zuipopoly-logo-full.svg";
-  const imageAlt = compact ? "Zuip-O-Poly" : "Zuip-O-Poly Camping van Eck Nijmegen";
-
+function statusPill(teamState) {
+  const meta = STATUS_META[teamState.status] ?? { label: teamState.status, dot: "yellow" };
   return `
-    <div class="${compact ? "brand brand-compact" : "brand brand-full"}">
-      <img
-        class="brand-image ${compact ? "brand-image-banner" : "brand-image-full"}"
-        src="${imageSrc}"
-        alt="${imageAlt}"
-        onload="this.closest('.brand').classList.add('has-brand-image')"
-        onerror="this.closest('.brand').classList.remove('has-brand-image')"
-      />
-      <div class="brand-fallback">
-        ${
-          compact
-            ? `<div class="fallback-banner">Zuip-O-Poly</div>`
-            : `
-              <div class="fallback-logo">
-                <div class="fallback-logo-top">Camping van Eck</div>
-                <div class="fallback-logo-main">Zuip-O-Poly</div>
-                <div class="fallback-logo-bottom">Nijmegen</div>
-              </div>
-            `
-        }
-      </div>
-    </div>
-    ${renderSyncWarning()}
-  `;
-}
-
-function button(label, className = "primary", attrs = "") {
-  return `<button class="button ${className}" ${attrs}>${label}</button>`;
-}
-
-function teamBadge(team) {
-  return `
-    <span class="team-icon" style="--team-accent:${team.accent}" aria-hidden="true">
-      <span></span><span></span><span></span>
+    <span class="status-pill dot-${meta.dot}">
+      <span class="status-dot"></span>${esc(meta.label)}
     </span>
   `;
 }
 
-function getSavedPowerUpsForUi(teamState) {
-  return teamState.savedPowerUps?.length
-    ? teamState.savedPowerUps
-    : teamState.savedPowerUp
-      ? [teamState.savedPowerUp]
-      : [];
+function syncBadge() {
+  const labels = { connecting: "VERBINDEN…", remote: "LIVE", local: "LOKAAL" };
+  return `<span class="sync-badge sync-${ui.syncMode}">${labels[ui.syncMode] ?? ""}</span>`;
 }
 
-function getTileName(tileId) {
-  return findTileById(tileId)?.name ?? "Onbekend vak";
-}
-
-function getRoundLabel(teamState) {
-  return `Ronde ${teamState.completedRounds + 1}`;
-}
-
-function getTurnLabel(teamState) {
-  return `Beurt ${teamState.normalTurnsUsed ?? 0} van ${GAME_CONFIG.maxNormalTurns}`;
-}
-
-function formatShortTimer(seconds) {
-  const safeSeconds = Math.max(Number(seconds ?? 0), 0);
-  const minutes = Math.floor(safeSeconds / 60);
-  const rest = safeSeconds % 60;
-  return `${minutes}:${String(rest).padStart(2, "0")}`;
-}
-
-function teamCard(team, teamState, extra = "") {
+function teamChip(teamState) {
+  const color = findTeamColor(teamState.colorId);
   return `
-    <article class="team-card" style="--team-accent:${team.accent}">
-      <div class="team-card-top">
-        ${teamBadge(team)}
-        <div>
-          <h2>${team.name}</h2>
-          <p>${getTurnLabel(teamState)} <span>|</span> Positie: ${teamState.position} <span>|</span> ${getTileName(teamState.currentTileId)}</p>
-        </div>
-        <strong class="round-pill">${getRoundLabel(teamState)}</strong>
-      </div>
-      <dl class="team-summary-grid">
-        <div>
-          <dt>Status</dt>
-          <dd>${teamState.status}</dd>
-        </div>
-        <div>
-          <dt>Positie</dt>
-          <dd>${teamState.position}</dd>
-        </div>
-        <div>
-          <dt>Vak</dt>
-          <dd>${getTileName(teamState.currentTileId)}</dd>
-        </div>
-        <div>
-          <dt>Laatste worp</dt>
-          <dd>${teamState.lastRoll ?? "-"}</dd>
-        </div>
-        <div>
-          <dt>Bewijs</dt>
-          <dd>${teamState.proofInWhatsapp ? "Verstuurd" : "-"}</dd>
-        </div>
-      </dl>
-      ${
-        getSavedPowerUpsForUi(teamState).length
-          ? `<div class="powerup-badge">
-              <span>Power-ups</span>
-              <strong>${getSavedPowerUpsForUi(teamState).map((powerUp) => powerUp.label).join(" + ")}</strong>
-            </div>`
-          : ""
-      }
-      ${extra}
-    </article>
+    <span class="team-chip" style="--team-accent:${color.hex}">
+      <span class="team-chip-dot"></span>${esc(teamState.name)}
+    </span>
   `;
 }
 
-function renderBoardShortcut() {
+function colorPicker(selectedId, takenIds, actionName) {
   return `
-    <button class="board-shortcut board-nav-button" data-action="tab-board" type="button">Bekijk bord</button>
+    <div class="color-grid" role="radiogroup" aria-label="Teamkleur">
+      ${TEAM_COLORS.map((color) => {
+        const taken = takenIds.includes(color.id);
+        const selected = color.id === selectedId;
+        return `
+          <button
+            type="button"
+            class="color-swatch ${selected ? "is-selected" : ""} ${taken ? "is-taken" : ""}"
+            style="--swatch:${color.hex}"
+            data-action="${actionName}"
+            data-color-id="${color.id}"
+            ${taken ? "disabled" : ""}
+            aria-label="${esc(color.name)}${taken ? " (bezet)" : ""}"
+          ></button>
+        `;
+      }).join("")}
+    </div>
   `;
 }
 
-function renderLoggedOut() {
-  app.innerHTML = `
-    <section class="screen auth-screen">
-      ${logoMarkup()}
-      <div class="mode-switch" role="tablist" aria-label="Login type">
-        <button class="${ui.loginMode === "team" ? "active" : ""}" data-action="mode-team">Team</button>
-        <button class="${ui.loginMode === "kroegraad" ? "active" : ""}" data-action="mode-kroegraad">Kroegraad</button>
-      </div>
-      ${ui.loginMode === "team" ? renderTeamLogin() : renderKroegraadLogin()}
-      ${ui.error ? `<p class="form-message error">${ui.error}</p>` : ""}
-      ${ui.notice ? `<p class="form-message">${ui.notice}</p>` : ""}
-    </section>
-  `;
-}
-
-function renderTeamLogin() {
+function playerStepper(count, actionPrefix) {
   return `
-    <form class="panel auth-panel team-auth-panel" data-form="team-login">
-      <div class="auth-panel-heading">
-        <p class="eyebrow">Team-login</p>
-        <h2>Kies je team</h2>
-      </div>
-      <div class="team-choice-grid" role="radiogroup" aria-label="Kies je team">
-        ${TEAMS.map((team, index) => `
-          <label class="team-choice-card" style="--team-accent:${team.accent}">
-            <input type="radio" name="teamId" value="${team.id}" ${index === 0 ? "checked" : ""} />
-            ${teamBadge(team)}
-            <span>
-              <strong>${team.name}</strong>
-              <small>${team.colorName}</small>
-            </span>
-          </label>
-        `).join("")}
-      </div>
-      <label>
-        Wachtwoord
-        <input name="teamPassword" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Wachtwoord" />
-      </label>
-      ${
-        isSyncBlocking()
-          ? `<p class="form-message">Live verbinding laden...</p>`
-          : ""
-      }
-      ${button("Team inloggen", "primary", `type="submit" ${isSyncBlocking() ? "disabled" : ""}`)}
-    </form>
+    <div class="player-stepper">
+      <button type="button" class="stepper-button" data-action="${actionPrefix}-minus" aria-label="Minder spelers">−</button>
+      <span class="stepper-value">${count} spelers</span>
+      <button type="button" class="stepper-button" data-action="${actionPrefix}-plus" aria-label="Meer spelers">+</button>
+    </div>
   `;
 }
 
-function renderKroegraadLogin() {
-  return `
-    <form class="panel auth-panel council-auth-panel" data-form="kroegraad-login">
-      <div class="auth-panel-heading">
-        <p class="eyebrow">Kroegraad</p>
-        <h2>Inloggen</h2>
-      </div>
-      <label>
-        Loginnaam
-        <input name="loginName" autocomplete="username" autocapitalize="characters" placeholder="Loginnaam" />
-      </label>
-      <label>
-        Code
-        <input name="code" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Code" />
-      </label>
-      ${
-        isSyncBlocking()
-          ? `<p class="form-message">Live verbinding laden...</p>`
-          : ""
-      }
-      ${button("Kroegraad inloggen", "primary", `type="submit" ${isSyncBlocking() ? "disabled" : ""}`)}
-    </form>
-  `;
-}
+/* ------------------------------------------------------------------ */
+/* Entry: home / aanmaken / meedoen                                    */
+/* ------------------------------------------------------------------ */
 
-function renderTeamApp(session, state) {
-  const team = findTeamById(session.teamId);
-  const teamState = getTeamState(session.teamId, state);
-
-  if (!team || !teamState || teamState.activeSessionId !== session.sessionId) {
-    clearCurrentSession();
-    render();
+function renderEntry(notice = "") {
+  if (ui.screen === "create") {
+    renderCreate();
     return;
   }
-
-  if (state.phase === GAME_PHASE.COUNTDOWN) {
-    renderCountdown(team);
-    return;
-  }
-
-  if (state.phase === GAME_PHASE.RUNNING) {
-    renderTeamRunning(team, teamState, state);
+  if (ui.screen === "join") {
+    renderJoin();
     return;
   }
 
   app.innerHTML = `
-    <section class="screen">
-      ${logoMarkup()}
-      ${teamCard(team, teamState)}
-      <section class="panel rules-panel">
-        <h2>Wachtkamer</h2>
-        <p class="status-line">Wacht tot de Kroegraad het spel start.</p>
-        <ul>
-          ${TEAM_RULES.map((rule) => `<li>${rule}</li>`).join("")}
+    <div class="screen screen-home">
+      ${brandHeader()}
+      ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
+      <div class="home-actions">
+        <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
+        <button class="button ghost big" data-action="nav-join">Meedoen met spelcode</button>
+      </div>
+      <section class="panel home-rules">
+        <h2>Zo werkt het</h2>
+        <ul class="rules-list">
+          ${TEAM_RULES.map((rule) => `<li>${esc(rule)}</li>`).join("")}
         </ul>
       </section>
-    </section>
+      <p class="home-city">Speelstad: <strong>Nijmegen</strong></p>
+    </div>
   `;
 }
 
-function renderCountdown(team = null) {
-  const remaining = getCountdownRemaining(getState()) ?? GAME_CONFIG.countdownSeconds;
+function renderCreate() {
   app.innerHTML = `
-    <section class="screen countdown-screen">
-      ${logoMarkup(true)}
-      <div class="countdown-ring" style="${team ? `--team-accent:${team.accent}` : ""}">
-        <span class="js-countdown">${remaining}</span>
-      </div>
-      <h2>Het spel start zo</h2>
-      <p>Geen geluid. Hou je telefoon bij de hand.</p>
-    </section>
+    <div class="screen screen-create">
+      ${brandHeader("Nieuwe spelkamer")}
+      <form class="panel entry-form" data-form="create-room">
+        <label class="field">
+          <span class="field-label">Teamnaam</span>
+          <input name="teamName" maxlength="24" required placeholder="Bijv. De Natte Neuzen" autocomplete="off" />
+        </label>
+
+        <div class="field">
+          <span class="field-label">Teamkleur</span>
+          ${colorPicker(ui.createColorId, [], "create-color")}
+        </div>
+
+        <div class="field">
+          <span class="field-label">Actieve teamleden</span>
+          ${playerStepper(ui.createPlayerCount, "create-player")}
+        </div>
+
+        <div class="field">
+          <span class="field-label">Spelstand</span>
+          <div class="mode-grid">
+            ${GAME_MODES.map((mode) => `
+              <button
+                type="button"
+                class="mode-card ${mode.id === ui.createModeId ? "is-selected" : ""}"
+                data-action="create-mode"
+                data-mode-id="${mode.id}"
+              >
+                <strong class="mode-name">${esc(mode.label)}</strong>
+                <span class="mode-turns">${mode.turns} worpen</span>
+                <span class="mode-tagline">${esc(mode.tagline)}</span>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+
+        ${ui.createError ? `<p class="form-error">${esc(ui.createError)}</p>` : ""}
+        <button class="button primary big" type="submit">Spelkamer aanmaken</button>
+        <button class="button link" type="button" data-action="nav-home">Terug</button>
+      </form>
+    </div>
   `;
 }
 
-function renderTeamRunning(team, teamState, state) {
-  if (ui.teamTab === "board") {
-    renderTeamBoard(team, teamState, state);
+function renderJoin() {
+  const fetched = ui.joinFetchedState;
+
+  if (!fetched) {
+    app.innerHTML = `
+      <div class="screen screen-join">
+        ${brandHeader("Meedoen")}
+        <form class="panel entry-form" data-form="join-fetch">
+          <label class="field">
+            <span class="field-label">Spelcode</span>
+            <input name="roomCode" maxlength="8" required placeholder="Bijv. K7X2P" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(ui.joinCode)}" />
+          </label>
+          ${ui.joinError ? `<p class="form-error">${esc(ui.joinError)}</p>` : ""}
+          <button class="button primary big" type="submit">Zoek spelkamer</button>
+          <button class="button link" type="button" data-action="nav-home">Terug</button>
+        </form>
+      </div>
+    `;
     return;
   }
 
-  const currentTile = findTileById(teamState.currentTileId);
-  const isFinished = teamState.status === TEAM_STATUS.FINISHED;
+  const mode = findGameMode(fetched.modeId);
+  const teams = Object.values(fetched.teams);
+  const takenColorIds = teams.map((team) => team.colorId);
+  const selectedColor = ui.joinColorId && !takenColorIds.includes(ui.joinColorId)
+    ? ui.joinColorId
+    : TEAM_COLORS.find((color) => !takenColorIds.includes(color.id))?.id;
+  ui.joinColorId = selectedColor;
+  const lobbyOpen = fetched.phase === GAME_PHASE.LOBBY;
+
   app.innerHTML = `
-    <section class="screen">
-      ${logoMarkup(true)}
-      ${teamCard(team, teamState)}
-      ${isFinished ? "" : renderBoardShortcut()}
-      ${isFinished ? "" : renderTurnStrip(teamState)}
-      ${state.paused ? renderPauseNotice() : ""}
-      ${renderActivePlayCard(teamState, team.id, currentTile)}
-      ${renderTeamPopup(teamState, team.id)}
-      ${renderDemoTools(team, teamState)}
-      ${isFinished ? "" : renderTeamTabs()}
-    </section>
-  `;
-}
+    <div class="screen screen-join">
+      ${brandHeader("Meedoen")}
+      <section class="panel">
+        <p class="join-room-line">Spelkamer <strong class="room-code">${esc(fetched.roomCode)}</strong> · ${esc(mode.label)} (${mode.turns} worpen)</p>
+        <p class="join-room-teams">${teams.length ? `Al aangemeld: ${teams.map((team) => esc(team.name)).join(", ")}` : "Nog geen teams aangemeld."}</p>
+      </section>
 
-function renderTurnStrip(teamState) {
-  const lastRoll = teamState.lastRoll ?? teamState.lastMove?.roll ?? null;
-  if (!lastRoll) {
-    return "";
-  }
-
-  return `
-    <section class="roll-result-strip" aria-label="Laatste worp ${lastRoll}">
-      <span>Je gooide</span>
-      <strong>${lastRoll}</strong>
-    </section>
-  `;
-}
-
-function renderPauseNotice() {
-  return `
-    <section class="panel pause-notice">
-      <p class="eyebrow">Gepauzeerd</p>
-      <h2>Het spel is tijdelijk gepauzeerd door de Kroegraad.</h2>
-      <p class="helper">Je opdracht mag je in principe blijven doen, maar je kunt nu niet gooien of bewijs melden.</p>
-    </section>
-  `;
-}
-
-function renderTeamPopup(teamState, teamId) {
-  if (!teamState.activePopup) {
-    return "";
-  }
-
-  const kind = teamState.activePopup.kind ?? "task";
-  const isCardIntro =
-    (kind === "chance" || kind === "fund") && teamState.activePopup.stage === "intro";
-  const labelByKind = {
-    chance: "Kans",
-    fund: "Algemeen Fonds",
-    swap: "Wisselstation",
-    start: "Grote Markt",
-    snack: "Snackstation",
-    parking: "Vrij Parkeren",
-    rejected: "Afgekeurd",
-    task: "Nieuwe opdracht"
-  };
-  const needsTeamChoice = ["team_choice_wait", "team_choice_move", "swap_positions", "wisselstation", "start_bonus"].includes(
-    teamState.currentTask?.effectType
-  ) && teamState.activePopup.cardId === teamState.currentTask?.cardId;
-
-  if (isCardIntro) {
-    const label = labelByKind[kind] ?? "Kaart";
-    const imageSrc = kind === "chance" ? "./assets/kans-normalized.svg" : "./assets/algemeen-fonds-normalized.svg";
-
-    return `
-      <div class="modal-backdrop card-reveal-backdrop" role="dialog" aria-modal="true" aria-labelledby="popup-title">
-        <section class="popup-card card-reveal-card popup-${kind}">
-          <p class="eyebrow">Je landt op</p>
-          <div class="card-reveal-visual" aria-hidden="true">
-            <span class="card-reveal-glow"></span>
-            <img src="${imageSrc}" alt="" />
+      ${lobbyOpen ? `
+        <form class="panel entry-form" data-form="join-room">
+          <label class="field">
+            <span class="field-label">Teamnaam</span>
+            <input name="teamName" maxlength="24" required placeholder="Bijv. Team Tapstoring" autocomplete="off" />
+          </label>
+          <div class="field">
+            <span class="field-label">Teamkleur</span>
+            ${colorPicker(selectedColor, takenColorIds, "join-color")}
           </div>
-          <h2 id="popup-title">${label}</h2>
-          <p class="card-reveal-subtitle">De kaart wordt geopend...</p>
-          ${button("Toon kaart", "primary", `data-action="reveal-popup-card" data-team-id="${teamId}"`)}
+          <div class="field">
+            <span class="field-label">Actieve teamleden</span>
+            ${playerStepper(ui.joinPlayerCount, "join-player")}
+          </div>
+          ${ui.joinError ? `<p class="form-error">${esc(ui.joinError)}</p>` : ""}
+          <button class="button primary big" type="submit">Meedoen</button>
+        </form>
+      ` : `
+        <section class="panel">
+          <p>Dit spel is al gestart. Nieuw joinen kan niet meer.</p>
         </section>
+      `}
+
+      ${teams.length ? `
+        <section class="panel">
+          <h2>Team hervatten</h2>
+          <p class="panel-sub">Nieuwe telefoon of app opnieuw geopend? Neem jullie bestaande team over. De spelstand verandert niet.</p>
+          <div class="resume-list">
+            ${teams.map((team) => `
+              <button class="button ghost resume-button" data-action="resume-team" data-team-id="${team.id}" style="--team-accent:${findTeamColor(team.colorId).hex}">
+                <span class="team-chip-dot"></span>${esc(team.name)}
+              </button>
+            `).join("")}
+          </div>
+        </section>
+      ` : ""}
+
+      <button class="button link" type="button" data-action="join-back">Andere code</button>
+    </div>
+  `;
+}
+
+function renderTakeover(state, session, teamState) {
+  app.innerHTML = `
+    <div class="screen screen-takeover">
+      ${brandHeader()}
+      <section class="panel">
+        <h2>Team actief op ander toestel</h2>
+        <p>${esc(teamState.name)} is al actief op een ander toestel. Herstel de bestaande sessie of vervang het actieve toestel. De spelstand verandert niet.</p>
+        <div class="stack-buttons">
+          <button class="button primary big" data-action="takeover-session">Dit toestel gebruiken</button>
+          <button class="button ghost" data-action="leave-room">Terug naar start</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+/* ------------------------------------------------------------------ */
+/* Lobby & countdown                                                   */
+/* ------------------------------------------------------------------ */
+
+function renderLobby(state, teamState) {
+  const mode = findGameMode(state.modeId);
+  const teams = Object.values(state.teams).sort((a, b) => a.joinedAt - b.joinedAt);
+  const isStarter = state.starterTeamId === teamState.id;
+  const enoughTeams = teams.length >= GAME_CONFIG.minTeams;
+  const color = findTeamColor(teamState.colorId);
+
+  app.innerHTML = `
+    <div class="screen screen-lobby" style="--team-accent:${color.hex}">
+      ${brandHeader("Speelstad: Nijmegen")}
+
+      <section class="panel room-panel">
+        <div class="room-code-row">
+          <div>
+            <span class="field-label">Spelcode</span>
+            <strong class="room-code big-code">${esc(state.roomCode)}</strong>
+          </div>
+          <button class="button ghost" data-action="copy-code">${ui.copied ? "Gekopieerd!" : "Kopieer"}</button>
+        </div>
+        <p class="room-meta">Spelstand: <strong>${esc(mode.label)}</strong> · ${mode.turns} worpen per team ${syncBadge()}</p>
+      </section>
+
+      <section class="panel own-team-panel">
+        <h2>Jullie team</h2>
+        <div class="own-team-row">
+          ${teamChip(teamState)}
+          ${playerStepper(teamState.playerCount, "lobby-player")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Teams in de spelkamer (${teams.length})</h2>
+        <ul class="lobby-team-list">
+          ${teams.map((team) => `
+            <li style="--team-accent:${findTeamColor(team.colorId).hex}">
+              <span class="team-chip-dot"></span>
+              <span class="lobby-team-name">${esc(team.name)}</span>
+              ${team.id === state.starterTeamId ? '<span class="starter-tag">Spelstarter</span>' : ""}
+            </li>
+          `).join("")}
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h2>Basisregels</h2>
+        <ul class="rules-list">
+          ${TEAM_RULES.map((rule) => `<li>${esc(rule)}</li>`).join("")}
+        </ul>
+      </section>
+
+      <section class="panel lobby-wait-panel">
+        ${isStarter ? `
+          <p>Start het spel zodra alle teams klaar zijn.${enoughTeams ? "" : ` Minimaal ${GAME_CONFIG.minTeams} teams nodig.`}</p>
+          <button class="button primary big" data-action="start-game" ${enoughTeams ? "" : "disabled"}>Start het spel</button>
+        ` : `
+          <p>Jullie zitten in de spelkamer van Zuip-O-Poly Nijmegen. Wacht tot alle teams klaar zijn. Zodra het spel start, krijgen jullie de eerste instructie.</p>
+        `}
+      </section>
+
+      <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
+      ${renderDialog(state, teamState)}
+    </div>
+  `;
+}
+
+function renderCountdown(state, teamState) {
+  const remaining = getCountdownRemaining(state) ?? 0;
+  app.innerHTML = `
+    <div class="screen screen-countdown">
+      ${brandHeader("Daar gaan we…")}
+      <div class="countdown-stage">
+        <span class="countdown-number">${remaining}</span>
+        <p class="countdown-sub">Het spel begint zo. Alle teams starten op vak 1.</p>
+      </div>
+    </div>
+  `;
+}
+
+/* ------------------------------------------------------------------ */
+/* Spelscherm                                                          */
+/* ------------------------------------------------------------------ */
+
+function renderGame(state, teamState) {
+  const mode = findGameMode(state.modeId);
+  const color = findTeamColor(teamState.colorId);
+  const tile = findTileById(teamState.position);
+
+  app.innerHTML = `
+    <div class="screen screen-game" style="--team-accent:${color.hex}">
+      <header class="game-header">
+        <div class="game-header-top">
+          ${teamChip(teamState)}
+          ${syncBadge()}
+        </div>
+        <div class="game-header-bottom">
+          ${statusPill(teamState)}
+          <span class="turn-counter">Beurt ${Math.min(teamState.normalTurnsUsed, mode.turns)}/${mode.turns}</span>
+          <span class="round-counter">Rondes: ${teamState.completedRounds}</span>
+        </div>
+      </header>
+
+      <section class="panel tile-panel">
+        <span class="field-label">Huidig vak</span>
+        <strong class="tile-name">${esc(tile?.name ?? "-")}</strong>
+        <span class="tile-type">${esc(tile?.type ?? "")}</span>
+      </section>
+
+      ${renderActionArea(state, teamState)}
+      ${renderPowerUps(state, teamState)}
+      ${renderBoard(state, teamState)}
+      ${renderEventLog(state)}
+
+      <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
+      ${renderPopup(state, teamState)}
+      ${renderDialog(state, teamState)}
+    </div>
+  `;
+}
+
+function renderActionArea(state, teamState) {
+  switch (teamState.status) {
+    case TEAM_STATUS.CAN_ROLL:
+      return renderDicePanel(state, teamState);
+    case TEAM_STATUS.TASK_ACTIVE:
+      return renderTaskPanel(state, teamState);
+    case TEAM_STATUS.CHOOSING_TEAM:
+      return renderTeamChoicePanel(state, teamState);
+    case TEAM_STATUS.WAITING_TIMER:
+    case TEAM_STATUS.WAITING_SWAP:
+      return renderWaitPanel(state, teamState);
+    case TEAM_STATUS.IN_JAIL:
+      return renderJailPanel(state, teamState);
+    case TEAM_STATUS.FINISHED:
+      return renderFinishedPanel(state, teamState);
+    default:
+      return `
+        <section class="panel action-panel">
+          <p>${esc(STATUS_META[teamState.status]?.screenText ?? "")}</p>
+        </section>
+      `;
+  }
+}
+
+function renderDicePanel(state, teamState) {
+  const face = teamState.lastRoll ?? 6;
+  return `
+    <section class="panel action-panel dice-panel">
+      ${teamState.pendingBonusRoll ? '<p class="bonus-roll-tag">Bonusworp — telt niet als normale beurt</p>' : ""}
+      <div class="dice-stage">
+        <div class="die die-${face}">
+          ${[1, 2, 3, 4, 5, 6].map((pip) => `<span class="pip pip-${pip}"></span>`).join("")}
+        </div>
+      </div>
+      ${teamState.lastRoll ? `
+        <div class="roll-result-strip">
+          <span>Laatste worp</span>
+          <strong>${teamState.lastRoll}</strong>
+        </div>
+      ` : ""}
+      <button class="button primary big" data-action="roll-dice" data-team-id="${teamState.id}">
+        Gooi dobbelsteen
+      </button>
+    </section>
+  `;
+}
+
+function renderTaskPanel(state, teamState) {
+  const task = teamState.currentTask;
+  if (!task) {
+    return "";
+  }
+
+  if (task.pendingTileId) {
+    return `
+      <section class="panel action-panel">
+        <p>Volgende vak wordt geladen…</p>
+        <button class="button primary big" data-action="confirm-task">Verder</button>
+      </section>
+    `;
+  }
+
+  const remaining = getTaskConfirmRemaining(teamState);
+  const timerBusy = remaining > 0;
+  const specialBlock = renderSpecialFlow(task);
+  const specialIncomplete =
+    (task.specialFlow === "dock17" && !task.dock17Revealed) ||
+    (task.specialFlow === "vanOuds" && !task.vanOudsComplete);
+  const kindClass = task.presentation === "chance" ? "card-chance" : task.presentation === "fund" ? "card-fund" : "";
+
+  return `
+    <section class="panel action-panel task-panel ${kindClass}">
+      <span class="field-label">${esc(task.presentation === "chance" ? "Kans" : task.presentation === "fund" ? "Algemeen Fonds" : "Opdracht")}</span>
+      <h2 class="task-title">${esc(task.title)}</h2>
+      ${task.location && task.location !== task.title ? `<p class="task-location">${esc(task.location)}</p>` : ""}
+      <div class="task-body">${nl2br(task.body)}</div>
+      ${task.rules ? `<details class="task-rules"><summary>Regels</summary><p>${nl2br(task.rules)}</p></details>` : ""}
+      ${specialBlock}
+      ${timerBusy ? `<p class="task-timer">Opdracht bezig: <strong>${fmtTime(remaining)}</strong></p>` : ""}
+
+      <div class="task-actions">
+        ${task.bonusPowerUp ? `
+          <button class="button primary big" data-action="confirm-task" ${timerBusy || specialIncomplete ? "disabled" : ""}>Gedaan, wij zweren het</button>
+          <button class="button gold big" data-action="confirm-task-bonus" ${timerBusy || specialIncomplete ? "disabled" : ""}>Gedaan mét bonus (${esc(task.bonusPowerUp.label)})</button>
+        ` : `
+          <button class="button primary big" data-action="confirm-task" ${timerBusy || specialIncomplete ? "disabled" : ""}>Gedaan, wij zweren het</button>
+        `}
+        ${task.skippable !== false ? `
+          <button class="button ghost" data-action="ask-skip">Opdracht skippen (−${GAME_CONFIG.skipPenaltySteps} vakjes)</button>
+        ` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderSpecialFlow(task) {
+  if (task.specialFlow === "dock17") {
+    return `
+      <div class="special-flow">
+        <p class="special-flow-title">Kies per speler een getal (1–17):</p>
+        ${task.dock17Choices.map((choice) => `
+          <div class="special-row">
+            <span>${esc(choice.name)}</span>
+            ${task.dock17Revealed
+              ? `<strong>${choice.number} = ${esc(choice.drink)}</strong>`
+              : `<select data-change="dock17-number" data-choice-id="${choice.id}">
+                  <option value="">Kies…</option>
+                  ${Array.from({ length: 17 }, (_, index) => index + 1)
+                    .map((number) => `<option value="${number}" ${choice.number === number ? "selected" : ""}>${number}</option>`)
+                    .join("")}
+                </select>`}
+          </div>
+        `).join("")}
+        ${!task.dock17Revealed ? `
+          <button
+            class="button gold"
+            data-action="dock17-reveal"
+            ${task.dock17Choices.every((choice) => choice.number) ? "" : "disabled"}
+          >Onthul de drankjes</button>
+        ` : ""}
       </div>
     `;
   }
 
-  return `
-    <div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="popup-title">
-      <section class="popup-card popup-${kind}">
-        <p class="eyebrow">${labelByKind[kind] ?? "Nieuwe opdracht"}</p>
-        <h2 id="popup-title">${teamState.activePopup.title}</h2>
-        <p>${teamState.activePopup.body}</p>
-        ${teamState.activePopup.blockedChoiceMessage ? `<p class="choice-warning">${teamState.activePopup.blockedChoiceMessage}</p>` : ""}
-        ${
-          needsTeamChoice
-            ? renderTeamChoiceButtons(teamId)
-            : button("Begrepen", "primary", `data-action="dismiss-popup" data-team-id="${teamId}"`)
-        }
-      </section>
-    </div>
-  `;
-}
-
-function renderTeamChoiceButtons(teamId) {
-  const state = getState();
-  const otherTeams = TEAMS.filter((team) => team.id !== teamId);
-
-  return `
-    <div class="team-choice-actions">
-      <p class="choice-title">Kies een team</p>
-      ${otherTeams
-        .map((team) => {
-          const teamState = state.teams[team.id];
-          const unavailableTeam =
-            teamState.status === TEAM_STATUS.IN_JAIL ||
-            teamState.status === TEAM_STATUS.FINISHED;
-          const shieldedTeam = getSavedPowerUpsForUi(teamState).some((powerUp) => powerUp.type === "shield");
-          const label = unavailableTeam
-            ? `${team.name} beschermd`
-            : shieldedTeam
-              ? `${team.name} - Hong actief`
-              : team.name;
-
-          return `<button
-            class="choice-team-button"
-            style="--team-accent:${team.accent}"
-            data-action="choose-team-target"
-            data-team-id="${teamId}"
-            data-target-team-id="${team.id}"
-            ${unavailableTeam ? "disabled" : ""}
-            type="button"
-          >${teamBadge(team)} <span>${label}</span></button>`;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
-function renderActivePlayCard(teamState, teamId, currentTile) {
-  if (teamState.status === TEAM_STATUS.CAN_ROLL) {
-    return `${renderDicePanel(teamState, teamId)}${renderPowerUpPanel(teamState, teamId)}`;
-  }
-
-  if (teamState.status === TEAM_STATUS.APPROVED) {
+  if (task.specialFlow === "vanOuds") {
     return `
-      <section class="panel play-panel verdict-panel approved-panel approved-ready-panel">
-        <p class="eyebrow">Goedgekeurd</p>
-        <h2>GOEDGEKEURD</h2>
-        <p class="tile-type">De Kroegraad heeft jullie bewijs goedgekeurd. Jullie mogen door naar de volgende worp.</p>
-      </section>
-      ${renderDicePanel(teamState, teamId)}
-      ${renderPowerUpPanel(teamState, teamId)}
+      <div class="special-flow">
+        <p class="special-flow-title">Rad van Bier en Vertier — iedereen draait één keer:</p>
+        ${task.vanOudsChoices.map((choice) => `
+          <div class="special-row">
+            <span>${esc(choice.name)}</span>
+            ${choice.result
+              ? `<strong>${esc(choice.result)}</strong>`
+              : `<button class="button gold small" data-action="vanouds-spin" data-choice-id="${choice.id}">Draai</button>`}
+          </div>
+        `).join("")}
+      </div>
     `;
-  }
-
-  if (teamState.status === TEAM_STATUS.WAITING_KROEGRAAD) {
-    return `
-      <section class="panel play-panel verdict-panel waiting-review-panel">
-        <div class="verdict-icon" aria-hidden="true">✓</div>
-        <div>
-          <p class="eyebrow">Bewijs verstuurd</p>
-          <h2>Wacht op Kroegraad</h2>
-              <p class="tile-type">De toegewezen Kroegraad ziet jullie nu bovenaan als TE KEUREN.</p>
-        </div>
-        ${renderActionButton(teamState, teamId)}
-      </section>
-    `;
-  }
-
-  if (teamState.status === TEAM_STATUS.REJECTED) {
-    return `
-      <section class="panel play-panel verdict-panel rejected-panel">
-        <p class="eyebrow">Afgekeurd</p>
-        <h2>AFGEKEURD</h2>
-        <p class="tile-type">Doe eerst de straf. Stuur daarna bewijs van de straf en druk op de bewijsknop. Na goedkeuring komt dezelfde opdracht opnieuw terug.</p>
-        ${renderTask(teamState)}
-        ${renderActionButton(teamState, teamId)}
-      </section>
-    `;
-  }
-
-  if (teamState.status === TEAM_STATUS.FINISHED) {
-    return `
-      <section class="panel play-panel status-panel end-panel">
-        <p class="eyebrow">Spel afgelopen</p>
-        <h2>SPEL AFGELOPEN</h2>
-        <p class="end-location">Kom naar De Tempelier</p>
-        <p class="tile-type">Jullie 25 normale dobbelbeurten zitten erop. Kom naar De Tempelier in Nijmegen. De Kroegraad maakt daar de winnaar bekend.</p>
-      </section>
-    `;
-  }
-
-  return `
-    <section class="panel play-panel">
-      <p class="eyebrow">Huidige opdracht</p>
-      <h2>${currentTile?.name ?? "Onbekend vak"}</h2>
-      <p class="tile-type">${currentTile?.type ?? ""}</p>
-      ${renderTask(teamState)}
-      ${renderSpecialTaskFlow(teamState, teamId)}
-      ${renderPowerUpPanel(teamState, teamId)}
-      ${renderActionButton(teamState, teamId)}
-    </section>
-  `;
-}
-
-function renderSpecialTaskFlow(teamState, teamId) {
-  if (teamState.currentTask?.specialFlow === "dock17") {
-    return renderDock17Flow(teamState, teamId);
-  }
-
-  if (teamState.currentTask?.specialFlow === "vanOuds") {
-    return renderCafeVanOudsFlow(teamState, teamId);
   }
 
   return "";
 }
 
-function renderCafeVanOudsFlow(teamState, teamId) {
+function renderTeamChoicePanel(state, teamState) {
   const task = teamState.currentTask;
-  const complete = task.vanOudsChoices.every((choice) => choice.result);
-  const spinPreview = activeVanOudsSpins.get(teamId);
-  const highlightedChoice = task.vanOudsChoices.find((choice) => choice.id === spinPreview?.choiceId);
-  const latestChoice = [...task.vanOudsChoices].reverse().find((choice) => choice.result);
-  const tickerFocus = highlightedChoice?.result ?? latestChoice?.result ?? "RAD";
-  const landedItems = !spinPreview && latestChoice?.result
-    ? createVanOudsTickerItems(latestChoice.result)
-    : null;
-  const tickerItems =
-    spinPreview?.items ??
-    landedItems ??
-    CAFE_VAN_OUDS_WHEEL_OPTIONS.map((item) => ({
-      label: item,
-      focus: item === tickerFocus
-    }));
-  const tickerLandingOffset =
-    spinPreview?.landingOffset ??
-    (landedItems ? getVanOudsTickerLandingOffset(landedItems) : null);
-  const tickerClass = spinPreview ? "is-active" : landedItems ? "is-landed" : "";
-
-  return `
-    <section class="special-flow van-ouds-flow ${spinPreview ? "is-spinning" : ""}">
-      <div class="special-flow-header">
-        <span>Rad van Bier en Vertier</span>
-        <strong>${task.vanOudsChoices.length} spelers</strong>
-      </div>
-      <div class="van-ouds-wheel-wrap" aria-hidden="true">
-        <div class="van-ouds-pointer"></div>
-        <div class="van-ouds-wheel">
-          <span>RAD</span>
-        </div>
-      </div>
-      <div class="van-ouds-ticker ${tickerClass}" aria-hidden="true">
-        <div ${tickerLandingOffset ? `style="--landing-offset: ${tickerLandingOffset}px"` : ""}>
-          ${tickerItems.map((item) => `<span class="${item.focus ? "is-focus" : ""}" title="${item.label}">${item.label}</span>`).join("")}
-        </div>
-      </div>
-      <div class="dock17-player-list">
-        ${task.vanOudsChoices
-          .map((choice) => `
-            <div class="dock17-player van-ouds-player">
-              <span>${choice.name}</span>
-              ${
-                choice.result
-                  ? `<strong>${choice.result}</strong>`
-                  : button("Draai rad", "ghost small", `data-action="van-ouds-spin" data-team-id="${teamId}" data-choice-id="${choice.id}"`)
-              }
-            </div>
-          `)
-          .join("")}
-      </div>
-      <div class="dock17-actions">
-        ${button("+ teamlid", "ghost", `data-action="van-ouds-add-player" data-team-id="${teamId}"`)}
-      </div>
-      ${
-        complete
-          ? `<p class="dock17-result-note">Iedereen heeft gedraaid. Druk op de bewijsknop zodra jullie klaar zijn.</p>`
-          : `<p class="van-ouds-helper">Draai per actieve speler één keer aan het rad.</p>`
-      }
-    </section>
-  `;
-}
-
-function createVanOudsTickerItems(result) {
-  const options = CAFE_VAN_OUDS_WHEEL_OPTIONS;
-  const resultIndex = Math.max(options.indexOf(result), 0);
-  const items = [];
-  for (let index = 0; index < VAN_OUDS_TICKER_PRE_ITEMS; index += 1) {
-    const option = options[(resultIndex + index + 4) % options.length];
-    items.push({ label: option, focus: false });
+  if (!task) {
+    return "";
   }
-  items.push({ label: result, focus: true });
-  return items;
-}
-
-function getVanOudsTickerLandingOffset(items) {
-  const focusIndex = Math.max(items.findIndex((item) => item.focus), 0);
-  return (
-    VAN_OUDS_TICKER_PADDING +
-    focusIndex * (VAN_OUDS_TICKER_ITEM_WIDTH + VAN_OUDS_TICKER_ITEM_GAP) +
-    VAN_OUDS_TICKER_ITEM_WIDTH / 2
-  );
-}
-
-function chooseVanOudsResult(teamId) {
-  const task = getState().teams[teamId]?.currentTask;
-  const usedResults = new Set(task?.vanOudsChoices?.map((choice) => choice.result).filter(Boolean) ?? []);
-  const availableOptions = CAFE_VAN_OUDS_WHEEL_OPTIONS.filter((item) => !usedResults.has(item));
-  const pool = availableOptions.length ? availableOptions : CAFE_VAN_OUDS_WHEEL_OPTIONS;
-  return pool[Math.floor(Math.random() * pool.length)] ?? CAFE_VAN_OUDS_WHEEL_OPTIONS[0];
-}
-
-function renderDock17Flow(teamState, teamId) {
-  const task = teamState.currentTask;
-  const allChosen = task.dock17Choices.every((choice) => choice.number);
+  const choosable = getChoosableTeams(state, teamState.id);
 
   return `
-    <section class="special-flow dock17-flow">
-      <div class="special-flow-header">
-        <span>Dock17 reveal</span>
-        <strong>${task.dock17Choices.length} spelers</strong>
-      </div>
-      <div class="dock17-player-list">
-        ${task.dock17Choices
-          .map((choice) => `
-            <label class="dock17-player">
-              <span>${choice.name}</span>
-              ${
-                task.dock17Revealed
-                  ? `<strong>${choice.number} = ${choice.drink}</strong>`
-                  : `<select data-action="dock17-choice" data-team-id="${teamId}" data-choice-id="${choice.id}">
-                      <option value="">Kies</option>
-                      ${Array.from({ length: 17 }, (_, index) => {
-                        const number = index + 1;
-                        return `<option value="${number}" ${choice.number === number ? "selected" : ""}>${number}</option>`;
-                      }).join("")}
-                    </select>`
-              }
-            </label>
-          `)
-          .join("")}
-      </div>
-      ${
-        task.dock17Revealed
-          ? `<p class="dock17-result-note">Uitslag staat klaar voor de Kroegraad. Druk op de bewijsknop zodra jullie klaar zijn.</p>`
-          : `<div class="dock17-actions">
-              ${button("+ teamlid", "ghost", `data-action="dock17-add-player" data-team-id="${teamId}"`)}
-              ${button("Onthul drankjes", "primary", `data-action="dock17-reveal" data-team-id="${teamId}" ${allChosen ? "" : "disabled"}`)}
-            </div>`
-      }
+    <section class="panel action-panel choice-panel">
+      <span class="field-label">Team kiezen</span>
+      <h2 class="task-title">${esc(task.title)}</h2>
+      <div class="task-body">${nl2br(task.body)}</div>
+      ${choosable.length ? `
+        <div class="choice-list">
+          ${choosable.map((team) => `
+            <button class="button ghost choice-button" data-action="ask-choose" data-team-id="${team.id}" style="--team-accent:${findTeamColor(team.colorId).hex}">
+              <span class="team-chip-dot"></span>${esc(team.name)}
+            </button>
+          `).join("")}
+        </div>
+      ` : `
+        <p class="notice">Er is nu geen team kiesbaar (cel, bescherming of gefinisht).</p>
+        <button class="button primary" data-action="choice-none">Verder zonder effect</button>
+      `}
     </section>
   `;
 }
 
-function renderPowerUpPanel(teamState, teamId) {
-  const powerUps = getSavedPowerUpsForUi(teamState);
+function renderWaitPanel(state, teamState) {
+  const remaining = getTeamCountdownSeconds(teamState, "waitUntil") ?? 0;
+  const meta = STATUS_META[teamState.status];
+  return `
+    <section class="panel action-panel wait-panel">
+      <span class="field-label">${esc(meta.label)}</span>
+      <div class="wait-timer">${fmtTime(remaining)}</div>
+      <p>${esc(meta.screenText)}</p>
+    </section>
+  `;
+}
+
+function renderJailPanel(state, teamState) {
+  const remaining = getTeamCountdownSeconds(teamState, "jailUntil") ?? 0;
+  const jailFree = (teamState.savedPowerUps ?? []).find((powerUp) => powerUp.type === "jail_free");
+  return `
+    <section class="panel action-panel jail-panel">
+      <span class="field-label">In de cel</span>
+      <div class="wait-timer">${fmtTime(remaining)}</div>
+      <p>Jullie zitten in de cel. Na de wachttijd volgt de strafopdracht.</p>
+      ${jailFree ? `
+        <button class="button gold big" data-action="use-powerup" data-powerup-id="${jailFree.id}">Gebruik Celvrij</button>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderFinishedPanel(state, teamState) {
+  const waitingOn = Object.values(state.teams).filter(
+    (team) => ![TEAM_STATUS.FINISHED, TEAM_STATUS.GAME_OVER].includes(team.status)
+  );
+  return `
+    <section class="panel action-panel finished-panel">
+      <span class="field-label">Gefinisht</span>
+      <h2 class="task-title">Beurten op — lekker gespeeld!</h2>
+      <p>Rondes: <strong>${teamState.completedRounds}</strong> · Eindvak: <strong>${teamState.position}</strong></p>
+      <p>${waitingOn.length ? `Nog bezig: ${waitingOn.map((team) => esc(team.name)).join(", ")}.` : "Alle teams zijn klaar…"}</p>
+    </section>
+  `;
+}
+
+/* ------------------------------------------------------------------ */
+/* Power-ups                                                           */
+/* ------------------------------------------------------------------ */
+
+function renderPowerUps(state, teamState) {
+  const powerUps = teamState.savedPowerUps ?? [];
   if (!powerUps.length) {
     return "";
   }
 
-  const getPowerUpAction = (powerUp) => {
-    if (powerUp.type === "skip_task") {
-      const usable = [TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.REJECTED].includes(teamState.status);
-      return {
-        label: usable ? "Inzetten" : "Bewaren",
-        disabled: !usable,
-        note: "Slaat een opdracht over zonder Kroegraad-keuring."
-      };
-    }
-
-    if (powerUp.type === "objection") {
-      const usable = teamState.status === TEAM_STATUS.REJECTED;
-      return {
-        label: usable ? "Bezwaar inzetten" : "Bewaren",
-        disabled: !usable,
-        note: "Alleen inzetbaar na een afkeuring."
-      };
-    }
-
-    if (powerUp.type === "jail_free") {
-      const usable = teamState.status === TEAM_STATUS.IN_JAIL;
-      return {
-        label: usable ? "Celvrij inzetten" : "Bewaren",
-        disabled: !usable,
-        note: "Alleen inzetbaar wanneer jullie echt in de cel zitten."
-      };
-    }
-
-    if (powerUp.type === "shield") {
-      return {
-        label: "Automatisch",
-        disabled: true,
-        note: "Blokkeert automatisch de eerstvolgende teamactie tegen jullie."
-      };
-    }
-
-    return {
-      label: "Bewaren",
-      disabled: true,
-      note: "Deze power-up blijft bewaard tot hij automatisch nodig is."
-    };
-  };
-
   return `
-    <section class="powerup-panel">
-      <div class="powerup-panel-header">
-        <span>Power-ups klaar</span>
-        <strong>${powerUps.length}</strong>
-      </div>
+    <section class="panel powerup-panel">
+      <h2>Power-ups</h2>
       <div class="powerup-list">
-        ${powerUps
-          .map((powerUp) => {
-            const action = getPowerUpAction(powerUp);
-            return `
-            <button
-              class="powerup-use-button"
-              data-action="use-powerup"
-              data-team-id="${teamId}"
-              data-powerup-id="${powerUp.id}"
-              ${action.disabled ? "disabled" : ""}
-              type="button"
-            >
-              <span>${powerUp.label}</span>
-              <strong>${action.label}</strong>
-            </button>
-            <p class="powerup-note">${action.note}</p>
+        ${powerUps.map((powerUp) => {
+          const usable = isPowerUpUsable(teamState, powerUp);
+          return `
+            <div class="powerup-card">
+              <div class="powerup-info">
+                <strong>${esc(powerUp.label)}</strong>
+                <p>${esc(powerUp.body ?? "")}</p>
+              </div>
+              ${powerUp.type === "shield"
+                ? '<span class="powerup-auto">Automatisch</span>'
+                : powerUp.type === "skip_task" || powerUp.type === "skip_free"
+                  ? `<button class="button gold small" data-action="skip-with-powerup" data-powerup-id="${powerUp.id}" ${usable ? "" : "disabled"}>Inzetten</button>`
+                  : `<button class="button gold small" data-action="use-powerup" data-powerup-id="${powerUp.id}" ${usable ? "" : "disabled"}>Inzetten</button>`}
+            </div>
           `;
-          })
-          .join("")}
+        }).join("")}
       </div>
     </section>
   `;
 }
 
-function renderTeamBoard(team, teamState, state) {
-  app.innerHTML = `
-    <section class="screen">
-      ${logoMarkup(true)}
-      ${renderTurnStrip(teamState)}
-      ${teamCard(team, teamState)}
-      <button class="board-back-button board-nav-button" data-action="tab-play" type="button">Terug naar spelen</button>
-      <section class="panel board-panel" style="--team-accent:${team.accent}">
-        <div class="board-header">
-          <div>
-            <p class="eyebrow">Bord</p>
-            <h2>${getTileName(teamState.currentTileId)}</h2>
-          </div>
-          <strong>Vak ${teamState.currentTileId}</strong>
+function isPowerUpUsable(teamState, powerUp) {
+  switch (powerUp.type) {
+    case "skip_task":
+    case "skip_free":
+      return teamState.status === TEAM_STATUS.TASK_ACTIVE && teamState.currentTask?.skippable !== false;
+    case "jail_free":
+      return teamState.status === TEAM_STATUS.IN_JAIL;
+    case "uno_reverse":
+      return [TEAM_STATUS.CAN_ROLL, TEAM_STATUS.TASK_ACTIVE].includes(teamState.status);
+    default:
+      return false;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Bord (alleen eigen pion zichtbaar)                                  */
+/* ------------------------------------------------------------------ */
+
+function renderBoard(state, teamState) {
+  const cells = getBoardCells();
+  return `
+    <section class="panel board-panel">
+      <h2>Het bord</h2>
+      <div class="board-grid">
+        ${cells.map((cell) => {
+          if (!cell.tileId) {
+            return '<div class="board-cell board-cell-empty"></div>';
+          }
+          const tile = findTileById(cell.tileId);
+          const theme = getTileTheme(tile);
+          const isHere = cell.tileId === teamState.position;
+          return `
+            <div class="board-cell ${theme.className} ${isHere ? "is-here" : ""}" style="--tile-color:${theme.color}" title="${esc(tile.name)}">
+              <span class="board-cell-label">${esc(theme.label)}</span>
+              ${isHere ? '<span class="board-pawn"></span>' : ""}
+            </div>
+          `;
+        }).join("")}
+        <div class="board-center">
+          <img src="./assets/zuipopoly-board-logo.svg" alt="" />
+          <span>Niet zomaar een kroegentocht.</span>
         </div>
-        <div class="board-grid" aria-label="Zuip-O-Poly bord">
-          <div class="board-center-logo" aria-hidden="true">
-            <img src="./assets/zuipopoly-board-logo.svg" alt="" />
-          </div>
-          ${getBoardCells()
-            .map((cell) => renderBoardCell(cell, teamState))
-            .join("")}
-        </div>
-      </section>
-      ${renderTeamTabs()}
+      </div>
     </section>
   `;
 }
 
-function renderBoardCell(cell, teamState) {
-  if (!cell.tileId) {
-    return `<div class="board-cell board-cell-empty" aria-hidden="true"></div>`;
+/* ------------------------------------------------------------------ */
+/* Eventlog                                                            */
+/* ------------------------------------------------------------------ */
+
+function renderEventLog(state) {
+  const events = (state.eventLog ?? []).slice(-8).reverse();
+  if (!events.length) {
+    return "";
+  }
+  return `
+    <section class="panel eventlog-panel">
+      <h2>Live</h2>
+      <ul class="eventlog-list">
+        ${events.map((event) => `<li>${esc(event.text)}</li>`).join("")}
+      </ul>
+    </section>
+  `;
+}
+
+/* ------------------------------------------------------------------ */
+/* Popups en dialogen                                                  */
+/* ------------------------------------------------------------------ */
+
+function renderPopup(state, teamState) {
+  const popup = teamState.activePopup;
+  if (!popup) {
+    return "";
   }
 
-  const tile = findTileById(cell.tileId);
-  const isCurrent = cell.tileId === teamState.currentTileId;
-  const theme = getTileTheme(tile);
+  const kindClass = `popup-${popup.kind ?? "info"}`;
+
+  if (popup.stage === "intro") {
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card ${kindClass}">
+          <span class="popup-kind">${esc(popupKindLabel(popup.kind))}</span>
+          <h2>${esc(popup.title)}</h2>
+          <button class="button primary big" data-action="reveal-popup">Draai de kaart om</button>
+        </div>
+      </div>
+    `;
+  }
+
   return `
-    <div
-      class="board-cell ${theme.className} ${isCurrent ? "is-current" : ""}"
-      style="--tile-color:${theme.color}"
-      title="${tile.name}"
-    >
-      ${
-        theme.className === "theme-station"
-          ? `<img class="board-icon ns-logo" src="./assets/ns-logo-normalized.svg" alt="NS station" />`
-          : ""
-      }
-      ${
-        theme.className === "theme-chance"
-          ? `<img class="board-icon tile-icon tile-icon-chance" src="./assets/kans-normalized.svg" alt="Kans" />`
-          : ""
-      }
-      ${
-        theme.className === "theme-fund"
-          ? `<img class="board-icon tile-icon tile-icon-fund" src="./assets/algemeen-fonds-normalized.svg" alt="Algemeen Fonds" />`
-          : ""
-      }
-      ${isCurrent ? `<i class="pawn" aria-label="Eigen pion"></i>` : ""}
+    <div class="popup-overlay">
+      <div class="popup-card ${kindClass}">
+        <span class="popup-kind">${esc(popupKindLabel(popup.kind))}</span>
+        <h2>${esc(popup.title)}</h2>
+        <div class="popup-body">${nl2br(popup.body ?? "")}</div>
+        ${popup.blockedChoiceMessage ? `<p class="popup-blocked">${esc(popup.blockedChoiceMessage)}</p>` : ""}
+        <button class="button primary big" data-action="dismiss-popup">Oké</button>
+      </div>
     </div>
   `;
 }
 
-function renderTeamTabs() {
-  return `
-    <nav class="bottom-tabs" aria-label="Spel navigatie">
-      <button class="${ui.teamTab === "play" ? "active" : ""}" data-action="tab-play">Spelen</button>
-      <button class="${ui.teamTab === "board" ? "active" : ""}" data-action="tab-board">Bord</button>
-    </nav>
-  `;
+function popupKindLabel(kind) {
+  const labels = {
+    chance: "Kans",
+    fund: "Algemeen Fonds",
+    swap: "Wisselstation",
+    start: "Ronde-bonus",
+    task: "Opdracht",
+    jail: "Cel",
+    finished: "Einde",
+    info: "Melding"
+  };
+  return labels[kind] ?? "Melding";
 }
 
-function renderMoveFlash(teamState) {
-  if (!teamState.lastMove) {
+function renderDialog(state, teamState) {
+  if (!ui.dialog) {
     return "";
   }
 
-  return `
-    <section class="move-flash">
-      <div>
-        <span>Je gooide</span>
-        <strong>${teamState.lastMove.roll}</strong>
-      </div>
-      <p>
-        Van vak ${teamState.lastMove.from} naar ${teamState.lastMove.to}.
-        ${
-          teamState.lastMove.crossedStart
-            ? "Je kwam langs Grote Markt Nijmegen: +1 ronde."
-            : ""
-        }
-      </p>
-    </section>
-  `;
-}
-
-function renderDemoTools(team, teamState) {
-  const session = getCurrentSession();
-  if (!session?.demo) {
-    return "";
-  }
-
-  return `
-    <section class="panel demo-panel">
-      <p class="eyebrow">Testmodus</p>
-      <h2>${team.name}</h2>
-      <p class="helper">Gebruik dit alleen om de teamflow, kaarten en keuringen snel te proberen.</p>
-      <div class="demo-card-actions">
-        ${button("Test Kans", "ghost", `data-action="demo-card-chance" data-team-id="${team.id}"`)}
-        ${button("Test Fonds", "ghost", `data-action="demo-card-fund" data-team-id="${team.id}"`)}
-      </div>
-      <div class="demo-card-actions">
-        ${button("Test teamkeuze", "ghost", `data-action="demo-card-choice" data-team-id="${team.id}"`)}
-        ${button("Test fonds-keuze", "ghost", `data-action="demo-card-choice-fund" data-team-id="${team.id}"`)}
-      </div>
-      <div class="demo-card-actions">
-        ${button("Test Wisselstation", "ghost", `data-action="demo-wisselstation" data-team-id="${team.id}"`)}
-        ${button("Test Dock17", "ghost", `data-action="demo-dock17" data-team-id="${team.id}"`)}
-      </div>
-      <div class="demo-card-actions">
-        ${button("Test Van Ouds", "ghost", `data-action="demo-van-ouds" data-team-id="${team.id}"`)}
-        ${button("Einddemo", "ghost", `data-action="demo-finished" data-team-id="${team.id}"`)}
-      </div>
-      <div class="demo-card-actions">
-        ${button("Lobby demo", "ghost", 'data-action="demo-open-lobby"')}
-        ${button("Naar Lars", "ghost", 'data-action="demo-open-lars"')}
-        ${button("Naar Swen", "ghost", 'data-action="demo-open-swen"')}
-      </div>
-      <div class="demo-card-actions">
-        ${button("Reset test", "ghost", 'data-action="start-team-demo"')}
-      </div>
-      <div class="review-actions">
-        ${button(
-          "Demo goedkeuren",
-          "approve",
-          `data-action="demo-approve" data-team-id="${team.id}" ${
-            teamState.status === TEAM_STATUS.WAITING_KROEGRAAD ? "" : "disabled"
-          }`
-        )}
-        ${button(
-          "Demo afkeuren",
-          "reject",
-          `data-action="demo-reject" data-team-id="${team.id}" ${
-            teamState.status === TEAM_STATUS.WAITING_KROEGRAAD ? "" : "disabled"
-          }`
-        )}
-      </div>
-    </section>
-  `;
-}
-
-function renderTask(teamState) {
-  if (!teamState.currentTask) {
-    return `<p class="helper empty-task">Klik op de dobbelsteenknop om naar je eerste opdracht te gaan.</p>`;
-  }
-
-  return `
-    <article class="task-card ${teamState.currentTask.placeholder ? "is-placeholder" : ""}">
-      ${
-        teamState.currentTask.location
-          ? `<span class="task-location">${teamState.currentTask.location}</span>`
-          : ""
-      }
-      <h3>${teamState.currentTask.title}</h3>
-      <p>${teamState.currentTask.body}</p>
-      ${
-        teamState.currentTask.actionUrl
-          ? `<a class="task-link-button" href="${teamState.currentTask.actionUrl}" target="_blank" rel="noopener noreferrer">${teamState.currentTask.actionLabel ?? "Open link"}</a>`
-          : ""
-      }
-      ${
-        teamState.rejectionPenalty
-          ? `<p class="penalty">${teamState.rejectionPenalty}</p>`
-          : ""
-      }
-    </article>
-  `;
-}
-
-function renderDicePanel(teamState, teamId) {
-  const canRoll = [TEAM_STATUS.CAN_ROLL, TEAM_STATUS.APPROVED].includes(teamState.status);
-  if (!canRoll) {
-    return "";
-  }
-
-  const isRolling = diceRollState.teamId === teamId;
-  const face = isRolling ? diceRollState.face : 3;
-  return `
-    <section class="panel dice-panel ${isRolling ? "is-rolling" : ""}" data-dice-team-id="${teamId}">
-      <p class="eyebrow">${isRolling ? "Dobbelsteen rolt" : teamState.status === TEAM_STATUS.APPROVED ? "Goedgekeurd" : "Mag gooien"}</p>
-      <h2>${isRolling ? "Even rollen..." : teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi de dobbelsteen"}</h2>
-      <div class="dice-stage" aria-hidden="true">
-        <div class="die die-${face} ${isRolling ? "is-rolling" : ""}">
-          ${Array.from({ length: 6 }, (_, index) => `<span class="pip pip-${index + 1}"></span>`).join("")}
+  if (ui.dialog.type === "skip") {
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card popup-chance">
+          <span class="popup-kind">Skippen</span>
+          <h2>Weet je het zeker?</h2>
+          <div class="popup-body">Weet je zeker dat jullie deze opdracht willen skippen? Jullie gaan ${GAME_CONFIG.skipPenaltySteps} vakjes achteruit.</div>
+          <div class="stack-buttons">
+            <button class="button primary big" data-action="skip-confirm">Ja, skip (−${GAME_CONFIG.skipPenaltySteps})</button>
+            ${skipPowerUpButtons(teamState)}
+            <button class="button ghost" data-action="dialog-cancel">Toch maar niet</button>
+          </div>
         </div>
       </div>
-      ${button(
-        isRolling ? "Rollen..." : teamState.status === TEAM_STATUS.APPROVED ? "Volgende worp" : "Gooi dobbelsteen",
-        "primary roll-dice-button",
-        `data-action="roll-dice" data-team-id="${teamId}" ${isRolling ? "disabled" : ""}`
-      )}
-    </section>
-  `;
-}
-
-function renderActionButton(teamState, teamId) {
-  const teamAttr = `data-team-id="${teamId}"`;
-  const state = getState();
-
-  if (state.paused && [TEAM_STATUS.CAN_ROLL, TEAM_STATUS.APPROVED, TEAM_STATUS.TASK_ACTIVE, TEAM_STATUS.REJECTED].includes(teamState.status)) {
-    return button("Gepauzeerd", "disabled", "disabled");
+    `;
   }
 
-  if (teamState.status === TEAM_STATUS.CAN_ROLL) {
-    return button("GOOI!", "primary", `data-action="roll-dice" ${teamAttr}`);
-  }
-
-  if (teamState.status === TEAM_STATUS.TASK_ACTIVE || teamState.status === TEAM_STATUS.REJECTED) {
-    if (teamState.currentTask?.specialFlow === "dock17" && !teamState.currentTask.dock17Revealed) {
-      return button("Onthul eerst de drankjes", "disabled", "disabled");
+  if (ui.dialog.type === "choose") {
+    const target = state.teams[ui.dialog.targetId];
+    if (!target) {
+      return "";
     }
-
-    if (teamState.currentTask?.specialFlow === "vanOuds" && !teamState.currentTask.vanOudsComplete) {
-      return button("Draai eerst het rad", "disabled", "disabled");
-    }
-
-    return button("Bewijs staat in WhatsApp", "primary proof-button", `data-action="submit-proof" ${teamAttr}`);
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card popup-swap">
+          <span class="popup-kind">Team kiezen</span>
+          <h2>Bevestigen</h2>
+          <div class="popup-body">Weet je zeker dat jullie <strong>${esc(target.name)}</strong> willen kiezen?</div>
+          <div class="stack-buttons">
+            <button class="button primary big" data-action="choose-confirm" data-team-id="${target.id}">Ja, kies ${esc(target.name)}</button>
+            <button class="button ghost" data-action="dialog-cancel">Annuleren</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
-  if (teamState.status === TEAM_STATUS.WAITING_KROEGRAAD) {
-    return button("Wachten op Kroegraad...", "disabled", "disabled");
-  }
-
-  if (teamState.status === TEAM_STATUS.APPROVED) {
-    return button("Volgende worp", "primary", `data-action="roll-dice" ${teamAttr}`);
-  }
-
-  if (teamState.status === TEAM_STATUS.IN_JAIL) {
-    const remaining = getTeamCountdownSeconds(teamState, "jailUntil");
-    return button(`Celstraf: ${formatShortTimer(remaining ?? 0)}`, "disabled", 'disabled data-live-team-timer');
-  }
-
-  if (teamState.status === TEAM_STATUS.WAITING_SWAP) {
-    const remaining = getTeamCountdownSeconds(teamState, "waitUntil");
-    return button(`Wachten: ${formatShortTimer(remaining ?? 0)}`, "disabled", 'disabled data-live-team-timer');
-  }
-
-  if (teamState.status === TEAM_STATUS.PAUSED) {
-    return button("Gepauzeerd", "disabled", "disabled");
+  if (ui.dialog.type === "leave") {
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card">
+          <span class="popup-kind">Spelkamer verlaten</span>
+          <h2>Weet je het zeker?</h2>
+          <div class="popup-body">Dit toestel verlaat de spelkamer. Jullie team blijft bestaan en kan later worden hervat met de spelcode.</div>
+          <div class="stack-buttons">
+            <button class="button primary big" data-action="leave-room">Ja, verlaten</button>
+            <button class="button ghost" data-action="dialog-cancel">Blijven</button>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   return "";
 }
 
-function randomDiceFace() {
-  return Math.floor(Math.random() * 6) + 1;
+function skipPowerUpButtons(teamState) {
+  const skipPowerUps = (teamState?.savedPowerUps ?? []).filter((powerUp) =>
+    ["skip_task", "skip_free"].includes(powerUp.type)
+  );
+  return skipPowerUps
+    .map(
+      (powerUp) => `
+        <button class="button gold" data-action="skip-with-powerup" data-powerup-id="${powerUp.id}">
+          Skip met ${esc(powerUp.label)} (geen straf)
+        </button>
+      `
+    )
+    .join("");
 }
 
-function setVisibleDiceFace(teamId, face) {
-  const die = app.querySelector(`[data-dice-team-id="${teamId}"] .die`);
-  if (!die) {
-    return;
-  }
+/* ------------------------------------------------------------------ */
+/* Eindstand                                                           */
+/* ------------------------------------------------------------------ */
 
-  die.classList.remove("die-1", "die-2", "die-3", "die-4", "die-5", "die-6");
-  die.classList.add(`die-${face}`);
-}
-
-function startDiceRoll(teamId) {
-  if (!teamId || diceRollState.teamId) {
-    return;
-  }
-
-  holdSoftUpdates(1800);
-  diceRollState.teamId = teamId;
-  diceRollState.face = 3;
-  render({ soft: true });
-
-  diceRollState.intervalId = window.setInterval(() => {
-    diceRollState.face = randomDiceFace();
-    setVisibleDiceFace(teamId, diceRollState.face);
-  }, 70);
-
-  diceRollState.timeoutId = window.setTimeout(() => {
-    if (diceRollState.intervalId) {
-      window.clearInterval(diceRollState.intervalId);
-    }
-
-    const finalRoll = randomDiceFace();
-    diceRollState.face = finalRoll;
-    setVisibleDiceFace(teamId, finalRoll);
-
-    window.setTimeout(() => {
-      rollDice(teamId, finalRoll);
-      diceRollState.teamId = null;
-      diceRollState.face = 3;
-      diceRollState.intervalId = null;
-      diceRollState.timeoutId = null;
-      diceRollState.pendingRender = false;
-      render({ soft: true });
-    }, 450);
-  }, 1050);
-}
-
-function renderKroegraadApp(session, state) {
-  const user = KROEGRAAD_USERS.find((item) => item.id === session.kroegraadId);
-  const displayName = user?.displayName ?? session.kroegraadId;
-
-  if (state.phase === GAME_PHASE.COUNTDOWN) {
-    app.innerHTML = `
-      <section class="screen council-screen">
-        ${logoMarkup(true)}
-        <div class="panel council-countdown-panel">
-          <p class="eyebrow">Ingelogd als ${displayName}</p>
-          <h2>Countdown loopt</h2>
-          <div class="council-count">${getCountdownRemaining(state) ?? GAME_CONFIG.countdownSeconds}</div>
-        </div>
-      </section>
-    `;
-    return;
-  }
-
-  if (state.phase === GAME_PHASE.RUNNING) {
-    if (state.timerFinishedAt) {
-      renderKroegraadFinished(session, state, displayName);
-      return;
-    }
-
-    renderKroegraadRunning(session, state, displayName);
-    return;
-  }
-
-  const canStart = allTeamsLoggedIn(state);
-  app.innerHTML = `
-    <section class="screen council-screen">
-      ${logoMarkup(true)}
-      <div class="panel council-lobby-panel">
-        <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
-        <h2>Ingelogd als ${displayName}</h2>
-        <div class="checklist">
-          ${TEAMS.map((team) => {
-            const loggedIn = state.teams[team.id]?.loggedIn;
-            return `
-              <div class="check-row">
-                <span>${teamBadge(team)} ${team.name}</span>
-                <strong class="${loggedIn ? "ok" : "missing"}">${loggedIn ? "ingelogd" : "niet ingelogd"}</strong>
-              </div>
-            `;
-          }).join("")}
-        </div>
-        <div class="lobby-actions">
-          ${button("Spel starten", "primary", `data-action="start-game" ${canStart ? "" : "disabled"}`)}
-          ${button("Reset voorbereiding", "ghost", 'data-action="reset-prep"')}
-          ${button("Uitloggen", "ghost", 'data-action="logout"')}
-        </div>
-        <p class="helper">Starten kan pas zodra alle ${GAME_CONFIG.totalTeamsRequired} teams ingelogd zijn.</p>
-      </div>
-    </section>
-  `;
-}
-
-function renderKroegraadRunning(session, state, displayName) {
-  const assigned = teamsForKroegraad(session.kroegraadId)
-    .map((team) => ({ team, teamState: state.teams[team.id] }))
-    .sort((a, b) => {
-      const aNeedsReview = a.teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
-      const bNeedsReview = b.teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
-      return Number(bNeedsReview) - Number(aNeedsReview);
-    });
-  const reviewCount = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD).length;
-  const reviewTeams = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD);
-  const otherTeams = assigned.filter(({ teamState }) => teamState.status !== TEAM_STATUS.WAITING_KROEGRAAD);
-
-  app.innerHTML = `
-    <section class="screen council-screen">
-      ${logoMarkup(true)}
-      <div class="panel council-command">
-        <div class="council-command-top">
-          <div>
-            <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
-            <h2>Ingelogd als ${displayName}</h2>
-          </div>
-          <strong class="status-badge ${state.paused ? "is-paused" : "is-live"}">${state.paused ? "Gepauzeerd" : "Actief"}</strong>
-        </div>
-        ${
-          reviewCount
-            ? `<div class="council-alert">Nu keuren: ${reviewTeams.map(({ team }) => team.name).join(", ")}.</div>`
-            : `<div class="council-empty-review">Geen open keuringen. Je hoeft nu niets te doen.</div>`
-        }
-        <div class="council-actions">
-          ${button(state.paused ? "Spel hervatten" : "Spel pauzeren", "ghost", 'data-action="toggle-pause"')}
-          ${button("Noodreset spel", "ghost small danger", 'data-action="reset-prep" data-force="true"')}
-          ${button("Uitloggen", "ghost small", 'data-action="logout"')}
-        </div>
-      </div>
-      <section class="council-section">
-        <div class="section-title-row">
-          <h2>Nu keuren</h2>
-          <span>${reviewCount}</span>
-        </div>
-        ${
-          reviewTeams.length
-            ? reviewTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState, true)).join("")
-            : `<div class="council-empty-review">Er staat nog geen keuring klaar.</div>`
-        }
-      </section>
-      <section class="council-section">
-        <div class="section-title-row">
-          <h2>Teamoverzicht</h2>
-          <span>${assigned.length}</span>
-        </div>
-        ${otherTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState)).join("")}
-      </section>
-      ${state.timerFinishedAt ? renderRankingPanel(state) : ""}
-    </section>
-  `;
-}
-
-function renderKroegraadFinished(session, state, displayName) {
-  const assigned = teamsForKroegraad(session.kroegraadId)
-    .map((team) => ({ team, teamState: state.teams[team.id] }));
-  const openReviewTeams = assigned.filter(({ teamState }) => teamState.status === TEAM_STATUS.WAITING_KROEGRAAD);
-
-  app.innerHTML = `
-    <section class="screen council-screen">
-      ${logoMarkup(true)}
-      ${renderRankingPanel(state)}
-      ${
-        openReviewTeams.length
-          ? `
-            <section class="council-section">
-              <div class="section-title-row">
-                <h2>Nog keuren</h2>
-                <span>${openReviewTeams.length}</span>
-              </div>
-              ${openReviewTeams.map(({ team, teamState }) => renderCouncilTeamCard(team, teamState, true)).join("")}
-            </section>
-          `
-          : ""
-      }
-      <div class="panel council-command">
-        <div class="council-command-top">
-          <div>
-            <p class="eyebrow">Zuip-O-Poly Kroegraad</p>
-            <h2>Ingelogd als ${displayName}</h2>
-          </div>
-          <strong class="status-badge is-finished">Afgelopen</strong>
-        </div>
-        <div class="council-empty-review">Iedereen naar De Tempelier in Nijmegen. De Kroegraad maakt daar de winnaar bekend.</div>
-        <div class="council-actions">
-          ${button("Uitloggen", "ghost small", 'data-action="logout"')}
-        </div>
-      </div>
-    </section>
-  `;
-}
-
-function renderCouncilTeamCard(team, teamState, focus = false) {
-  const needsReview = teamState.status === TEAM_STATUS.WAITING_KROEGRAAD;
-  const isBusy = teamState.status === TEAM_STATUS.TASK_ACTIVE || teamState.status === TEAM_STATUS.REJECTED;
-  const isFinished = teamState.status === TEAM_STATUS.FINISHED;
-  const hasSession = Boolean(teamState.activeSessionId);
-  const statusClass = needsReview
-    ? "is-review"
-    : isBusy
-      ? "is-busy"
-      : isFinished
-        ? "is-finished"
-        : "is-neutral";
-  const waitingText = teamState.status === TEAM_STATUS.REJECTED
-    ? "Team moet eerst strafbewijs sturen. Daarna doen ze de opdracht opnieuw."
-    : "Team is bezig met opdracht. Wachten op bewijs.";
-  const reviewIsPenalty = teamState.reviewType === "rejection_penalty";
-
-  return `
-    <article class="team-card council-card ${needsReview ? "needs-review" : ""} ${focus ? "is-focus-card" : ""}" style="--team-accent:${team.accent}" data-status="${teamState.status}">
-      <div class="team-card-top">
-        ${teamBadge(team)}
-        <div>
-          <h2>${team.name}</h2>
-          <p class="council-team-meta">Beurt ${teamState.normalTurnsUsed ?? 0}/${GAME_CONFIG.maxNormalTurns} · ${hasSession ? "sessie actief" : "geen sessie"}</p>
-        </div>
-        <strong class="status-badge ${statusClass}">${needsReview ? "TE KEUREN" : teamState.status}</strong>
-        <details class="team-menu">
-          <summary aria-label="Team menu">⋯</summary>
-          <button data-action="release-session" data-team-id="${team.id}" type="button">Sessie vrijgeven</button>
-        </details>
-      </div>
-      ${
-        isBusy
-          ? `<p class="council-status">${waitingText}</p>`
-          : ""
-      }
-      ${
-        needsReview && teamState.currentTask
-          ? `
-            <p class="council-status is-hot">${reviewIsPenalty ? "Check het strafbewijs. Bij goedkeuring gaat het team terug naar dezelfde opdracht." : "Check het bewijs en kies daarna hieronder."}</p>
-            <article class="task-card review-task">
-              <span class="review-label">${reviewIsPenalty ? "Strafbewijs" : "Opdracht"}</span>
-              <h3>${reviewIsPenalty ? "Afkeurstraf" : teamState.currentTask.title}</h3>
-              <p>${reviewIsPenalty ? (teamState.rejectionPenalty ?? "") : (teamState.currentTask.reviewBody ?? teamState.currentTask.body)}</p>
-              ${
-                !reviewIsPenalty && teamState.currentTask.rules
-                  ? `<p class="review-rules">${teamState.currentTask.rules}</p>`
-                  : ""
-              }
-              ${
-                !reviewIsPenalty && teamState.currentTask.reviewExtra
-                  ? `<p class="review-extra">${teamState.currentTask.reviewExtra}</p>`
-                  : ""
-              }
-            </article>
-            <div class="review-actions">
-              ${button(reviewIsPenalty ? "Straf goedkeuren" : "Goedkeuren", "approve", `data-action="approve-task" data-team-id="${team.id}"`)}
-              ${button(reviewIsPenalty ? "Straf afkeuren" : "Afkeuren", "reject", `data-action="reject-task" data-team-id="${team.id}"`)}
-            </div>
-          `
-          : ""
-      }
-    </article>
-  `;
-}
-
-function renderRankingPanel(state) {
+function renderEnded(state, teamState) {
   const ranking = getRanking(state);
-  const winner = ranking[0];
-  return `
-    <section class="panel ranking-panel final-ranking-panel">
-      <p class="eyebrow">Eindstand</p>
-      <div class="winner-card" style="--team-accent:${winner.team.accent}">
-        ${teamBadge(winner.team)}
-        <span>Winnaar</span>
-        <h2>${winner.team.name}</h2>
-        <p>${winner.teamState.completedRounds} rondes · vak ${winner.teamState.position} · ${getTileName(winner.teamState.currentTileId)}</p>
-      </div>
-      <ol class="ranking-list">
-        ${ranking.map(({ team, teamState }, index) => `
-          <li style="--team-accent:${team.accent}">
-            <span class="rank-number">${index + 1}</span>
-            <div>
-              <strong>${team.name}</strong>
-              <p>${teamState.completedRounds} rondes · vak ${teamState.position} · ${getTileName(teamState.currentTileId)}</p>
-            </div>
-            <em>${formatReachedTime(teamState.positionReachedAt)}</em>
-          </li>
-        `).join("")}
-      </ol>
-      <p class="final-location">Kom naar De Tempelier in Nijmegen.</p>
-    </section>
+  const winner = ranking[0]?.teamState;
+  const color = findTeamColor(teamState.colorId);
+
+  app.innerHTML = `
+    <div class="screen screen-ended" style="--team-accent:${color.hex}">
+      ${brandHeader("Spel afgelopen")}
+
+      ${winner ? `
+        <section class="panel winner-panel" style="--team-accent:${findTeamColor(winner.colorId).hex}">
+          <span class="field-label">Winnaar</span>
+          <h2 class="winner-name">${esc(winner.name)}</h2>
+          <p>${winner.completedRounds} rondes · vak ${winner.position}</p>
+        </section>
+      ` : ""}
+
+      <section class="panel">
+        <h2>Eindstand</h2>
+        <ol class="ranking-list">
+          ${ranking.map(({ teamState: team }, index) => `
+            <li class="${team.id === teamState.id ? "is-own" : ""}" style="--team-accent:${findTeamColor(team.colorId).hex}">
+              <span class="ranking-place">${index + 1}</span>
+              <span class="team-chip-dot"></span>
+              <span class="ranking-name">${esc(team.name)}</span>
+              <span class="ranking-stats">${team.completedRounds} rondes · vak ${team.position}</span>
+            </li>
+          `).join("")}
+        </ol>
+        <p class="panel-sub">Winnaar = meeste rondes, dan hoogste vak, dan wie daar het eerst was.</p>
+      </section>
+
+      <button class="button primary big" data-action="leave-room">Terug naar start</button>
+      ${renderPopup(state, teamState)}
+    </div>
   `;
 }
 
-function formatReachedTime(timestamp) {
-  if (!timestamp) {
-    return "-";
-  }
-
-  return new Date(timestamp).toLocaleTimeString("nl-NL", {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-}
-
-function finishSoftRender(scrollY) {
-  window.requestAnimationFrame(() => {
-    const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
-    window.scrollTo(0, Math.min(scrollY, maxScroll));
-    window.setTimeout(() => {
-      app.classList.remove("soft-refresh");
-    }, 0);
-  });
-}
-
-function render(options = {}) {
-  const soft = options.soft === true;
-  const scrollY = window.scrollY;
-  if (soft) {
-    app.classList.add("soft-refresh");
-  }
-
-  runClockTick();
-  const state = getState();
-  const session = getCurrentSession();
-
-  if (!session) {
-    renderLoggedOut();
-    if (soft) {
-      finishSoftRender(scrollY);
-    }
-    return;
-  }
-
-  if (session.role === "team") {
-    renderTeamApp(session, state);
-    if (soft) {
-      finishSoftRender(scrollY);
-    }
-    return;
-  }
-
-  if (session.role === "kroegraad") {
-    renderKroegraadApp(session, state);
-    if (soft) {
-      finishSoftRender(scrollY);
-    }
-    return;
-  }
-
-  clearCurrentSession();
-  renderLoggedOut();
-  if (soft) {
-    finishSoftRender(scrollY);
-  }
-}
-
-function transitionRender() {
-  const currentScreen = app.querySelector(".screen");
-  if (!currentScreen) {
-    render();
-    return;
-  }
-
-  currentScreen.classList.add("is-leaving");
-  window.setTimeout(render, 130);
-}
+/* ------------------------------------------------------------------ */
+/* Events                                                              */
+/* ------------------------------------------------------------------ */
 
 app.addEventListener("click", (event) => {
-  const actionTarget = event.target.closest("[data-action]");
-  const action = actionTarget?.dataset.action;
-  if (!action) {
+  const target = event.target.closest("[data-action]");
+  if (!target || target.disabled) {
+    return;
+  }
+  const action = target.dataset.action;
+  const session = getSession();
+
+  switch (action) {
+    case "nav-home":
+      ui.screen = "home";
+      ui.createError = "";
+      ui.joinError = "";
+      render();
+      break;
+    case "nav-create":
+      ui.screen = "create";
+      render();
+      break;
+    case "nav-join":
+      ui.screen = "join";
+      ui.joinFetchedState = null;
+      render();
+      break;
+    case "join-back":
+      ui.joinFetchedState = null;
+      ui.joinError = "";
+      render();
+      break;
+    case "create-mode":
+      ui.createModeId = target.dataset.modeId;
+      render();
+      break;
+    case "create-color":
+      ui.createColorId = target.dataset.colorId;
+      render();
+      break;
+    case "join-color":
+      ui.joinColorId = target.dataset.colorId;
+      render();
+      break;
+    case "create-player-minus":
+      ui.createPlayerCount = Math.max(1, ui.createPlayerCount - 1);
+      render();
+      break;
+    case "create-player-plus":
+      ui.createPlayerCount = Math.min(8, ui.createPlayerCount + 1);
+      render();
+      break;
+    case "join-player-minus":
+      ui.joinPlayerCount = Math.max(1, ui.joinPlayerCount - 1);
+      render();
+      break;
+    case "join-player-plus":
+      ui.joinPlayerCount = Math.min(8, ui.joinPlayerCount + 1);
+      render();
+      break;
+    case "lobby-player-minus":
+      setPlayerCount(session.teamId, (getState()?.teams[session.teamId]?.playerCount ?? 2) - 1);
+      break;
+    case "lobby-player-plus":
+      setPlayerCount(session.teamId, (getState()?.teams[session.teamId]?.playerCount ?? 2) + 1);
+      break;
+    case "resume-team": {
+      const result = takeoverTeam(ui.joinFetchedState?.roomCode ?? ui.joinCode, target.dataset.teamId, ui.joinFetchedState);
+      if (result.ok) {
+        ui.joinFetchedState = null;
+        connectSync();
+      } else {
+        ui.joinError = result.message;
+      }
+      render();
+      break;
+    }
+    case "takeover-session":
+      takeoverTeam(session.roomCode, session.teamId);
+      render();
+      break;
+    case "copy-code": {
+      const state = getState();
+      if (state?.roomCode && navigator.clipboard) {
+        navigator.clipboard.writeText(state.roomCode).catch(() => {});
+        ui.copied = true;
+        window.setTimeout(() => {
+          ui.copied = false;
+          render();
+        }, 1600);
+      }
+      render();
+      break;
+    }
+    case "start-game":
+      startGame(session.teamId);
+      break;
+    case "roll-dice":
+      rollDice(session.teamId);
+      break;
+    case "confirm-task":
+      confirmTask(session.teamId);
+      break;
+    case "confirm-task-bonus":
+      confirmTask(session.teamId, { withBonus: true });
+      break;
+    case "ask-skip":
+      ui.dialog = { type: "skip" };
+      render();
+      break;
+    case "skip-confirm":
+      ui.dialog = null;
+      skipTask(session.teamId);
+      break;
+    case "skip-with-powerup":
+      ui.dialog = null;
+      skipTask(session.teamId, { powerUpId: target.dataset.powerupId });
+      break;
+    case "ask-choose":
+      ui.dialog = { type: "choose", targetId: target.dataset.teamId };
+      render();
+      break;
+    case "choose-confirm":
+      ui.dialog = null;
+      chooseTeam(session.teamId, target.dataset.teamId);
+      break;
+    case "choice-none":
+      resolveChoiceWithoutTarget(session.teamId);
+      break;
+    case "dialog-cancel":
+      ui.dialog = null;
+      render();
+      break;
+    case "ask-leave":
+      ui.dialog = { type: "leave" };
+      render();
+      break;
+    case "leave-room":
+      ui.dialog = null;
+      ui.screen = "home";
+      clearSession();
+      break;
+    case "use-powerup":
+      usePowerUp(session.teamId, target.dataset.powerupId);
+      break;
+    case "dock17-reveal":
+      revealDock17Choices(session.teamId);
+      break;
+    case "vanouds-spin":
+      spinVanOudsWheel(session.teamId, target.dataset.choiceId);
+      break;
+    case "dismiss-popup":
+      dismissPopup(session.teamId);
+      break;
+    case "reveal-popup":
+      revealPopupCard(session.teamId);
+      break;
+    default:
+      break;
+  }
+});
+
+app.addEventListener("submit", async (event) => {
+  const form = event.target.closest("[data-form]");
+  if (!form) {
+    return;
+  }
+  event.preventDefault();
+  const data = new FormData(form);
+
+  if (form.dataset.form === "create-room") {
+    const result = createRoom({
+      modeId: ui.createModeId,
+      teamName: data.get("teamName"),
+      colorId: ui.createColorId,
+      playerCount: ui.createPlayerCount
+    });
+    if (!result.ok) {
+      ui.createError = result.message;
+      render();
+      return;
+    }
+    ui.createError = "";
+    connectSync();
+    render();
     return;
   }
 
-  holdSoftUpdates(750);
-  ui.error = "";
-  ui.notice = "";
-
-  if (action === "mode-team") {
-    ui.loginMode = "team";
-    transitionRender();
-  }
-
-  if (action === "mode-kroegraad") {
-    ui.loginMode = "kroegraad";
-    transitionRender();
-  }
-
-  if (action === "tab-play") {
-    ui.teamTab = "play";
+  if (form.dataset.form === "join-fetch") {
+    ui.joinCode = normalizeRoomCode(data.get("roomCode"));
+    ui.joinError = "";
     render();
-  }
-
-  if (action === "tab-board") {
-    ui.teamTab = "board";
+    const result = await fetchRoom(ui.joinCode);
+    if (!result.ok) {
+      ui.joinError = result.message;
+    } else {
+      ui.joinFetchedState = result.state;
+    }
     render();
+    return;
   }
 
-  if (action === "start-game") {
-    startCountdown();
-    render();
-  }
-
-  if (action === "reset-prep") {
-    resetPreparation({ force: actionTarget.dataset.force === "true" });
-    ui.notice = actionTarget.dataset.force === "true"
-      ? "Spelstand is volledig gereset."
-      : "Voorbereiding is gereset.";
-    render();
-  }
-
-  if (action === "toggle-pause") {
-    const session = getCurrentSession();
-    togglePause(session?.kroegraadId);
-    render();
-  }
-
-  if (action === "release-session") {
-    const session = getCurrentSession();
-    releaseTeamSession(session?.kroegraadId, actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "logout") {
-    clearCurrentSession();
-    render();
-  }
-
-  if (action === "start-team-demo") {
-    ui.teamTab = "play";
-    ui.demoToolsVisible = true;
-    startTeamDemo();
-    render();
-  }
-
-  if (action === "roll-dice") {
-    startDiceRoll(actionTarget.dataset.teamId);
-  }
-
-  if (action === "submit-proof") {
-    submitProofInWhatsapp(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "dismiss-popup") {
-    dismissTeamPopup(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "reveal-popup-card") {
-    revealTeamPopupCard(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "choose-team-target") {
-    applyTeamChoiceEffect(actionTarget.dataset.teamId, actionTarget.dataset.targetTeamId);
-    render();
-  }
-
-  if (action === "approve-task") {
-    const session = getCurrentSession();
-    approveTeamTask(session?.kroegraadId, actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "reject-task") {
-    const session = getCurrentSession();
-    rejectTeamTask(session?.kroegraadId, actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "demo-approve") {
-    demoResolveTeamTask(actionTarget.dataset.teamId, "approve");
-    render();
-  }
-
-  if (action === "demo-reject") {
-    demoResolveTeamTask(actionTarget.dataset.teamId, "reject");
-    render();
-  }
-
-  if (action === "demo-card-chance") {
-    demoDrawCard(actionTarget.dataset.teamId, "chance");
-    render();
-  }
-
-  if (action === "demo-card-fund") {
-    demoDrawCard(actionTarget.dataset.teamId, "fund");
-    render();
-  }
-
-  if (action === "demo-card-choice") {
-    demoDrawTeamChoiceCard(actionTarget.dataset.teamId, "chance");
-    render();
-  }
-
-  if (action === "demo-card-choice-fund") {
-    demoDrawTeamChoiceCard(actionTarget.dataset.teamId, "fund");
-    render();
-  }
-
-  if (action === "demo-wisselstation") {
-    demoEnterWisselstation(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "demo-dock17") {
-    demoEnterDock17(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "demo-van-ouds") {
-    demoEnterCafeVanOuds(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "dock17-add-player") {
-    addDock17Player(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "dock17-reveal") {
-    holdSoftUpdates(1000);
-    actionTarget.disabled = true;
-    actionTarget.closest(".dock17-flow")?.classList.add("is-revealing");
-    window.setTimeout(() => {
-      revealDock17Choices(actionTarget.dataset.teamId);
-      render();
-    }, 850);
-  }
-
-  if (action === "van-ouds-add-player") {
-    addCafeVanOudsPlayer(actionTarget.dataset.teamId);
-    render();
-  }
-
-  if (action === "van-ouds-spin") {
-    holdSoftUpdates(3100);
-    const result = chooseVanOudsResult(actionTarget.dataset.teamId);
-    const tickerItems = createVanOudsTickerItems(result);
-    actionTarget.disabled = true;
-    activeVanOudsSpins.set(actionTarget.dataset.teamId, {
-      choiceId: actionTarget.dataset.choiceId,
-      result,
-      items: tickerItems,
-      landingOffset: getVanOudsTickerLandingOffset(tickerItems)
+  if (form.dataset.form === "join-room") {
+    const result = joinRoom({
+      roomCode: ui.joinFetchedState?.roomCode ?? ui.joinCode,
+      teamName: data.get("teamName"),
+      colorId: ui.joinColorId,
+      playerCount: ui.joinPlayerCount,
+      roomState: ui.joinFetchedState
     });
-    render();
-    window.setTimeout(() => {
-      spinCafeVanOudsWheel(actionTarget.dataset.teamId, actionTarget.dataset.choiceId, result);
-      activeVanOudsSpins.delete(actionTarget.dataset.teamId);
+    if (!result.ok) {
+      ui.joinError = result.message;
       render();
-    }, 2800);
-  }
-
-  if (action === "demo-open-lars") {
-    clearCurrentSession();
-    loginKroegraad("LARS", "0311");
+      return;
+    }
+    ui.joinError = "";
+    ui.joinFetchedState = null;
+    connectSync();
     render();
-  }
-
-  if (action === "demo-open-swen") {
-    clearCurrentSession();
-    loginKroegraad("SWEN", "0805");
-    render();
-  }
-
-  if (action === "demo-open-lobby") {
-    startLobbyDemo(actionTarget.dataset.teamId ?? "team_bruine_kroeg");
-    clearCurrentSession();
-    loginKroegraad("LARS", "0311");
-    render();
-  }
-
-  if (action === "demo-finished") {
-    startFinishedDemo(actionTarget.dataset.teamId ?? "team_bruine_kroeg");
-    render();
-  }
-
-  if (action === "use-powerup") {
-    holdSoftUpdates(1100);
-    const powerupPanel = actionTarget.closest(".powerup-panel");
-    actionTarget.disabled = true;
-    powerupPanel?.classList.add("is-activating");
-    window.setTimeout(() => {
-      useSavedPowerUp(actionTarget.dataset.teamId, actionTarget.dataset.powerupId);
-      render();
-    }, 900);
   }
 });
 
 app.addEventListener("change", (event) => {
-  const target = event.target;
-  if (target.dataset.action !== "dock17-choice") {
+  const target = event.target.closest("[data-change]");
+  if (!target) {
     return;
   }
+  const session = getSession();
+  if (target.dataset.change === "dock17-number") {
+    updateDock17Choice(session.teamId, target.dataset.choiceId, target.value);
+  }
+});
 
-  holdSoftUpdates(750);
-  updateDock17Choice(target.dataset.teamId, target.dataset.choiceId, target.value);
+/* ------------------------------------------------------------------ */
+/* Sync & klok                                                         */
+/* ------------------------------------------------------------------ */
+
+async function connectSync() {
+  ui.syncMode = "connecting";
+  const result = await initializeRemoteSync();
+  ui.syncMode = result.ok ? "remote" : "local";
+  render();
+}
+
+subscribe(() => {
   render();
 });
 
-app.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const form = event.target;
-  holdSoftUpdates(900);
-  ui.error = "";
-  ui.notice = "";
-
-  if (form.dataset.form === "team-login") {
-    const formData = new FormData(form);
-    const result = loginTeamWithPassword(
-      String(formData.get("teamId") ?? ""),
-      String(formData.get("teamPassword") ?? "")
-    );
-    if (!result.ok) {
-      ui.error = result.message;
-    }
-    transitionRender();
-  }
-
-  if (form.dataset.form === "kroegraad-login") {
-    const formData = new FormData(form);
-    const result = loginKroegraad(
-      String(formData.get("loginName") ?? ""),
-      String(formData.get("code") ?? "")
-    );
-    if (!result.ok) {
-      ui.error = result.message;
-    }
-    transitionRender();
-  }
-});
-
-function consumeLaunchParams() {
-  const params = new URLSearchParams(window.location.search);
-  const shouldCleanUrl = params.has("demo") || params.has("logout") || params.has("reset");
-
-  if (params.has("reset")) {
-    ui.skipRemoteSync = true;
-    resetPreparation({ force: true });
-    ui.demoToolsVisible = false;
-  }
-
-  if (params.has("logout") || params.has("reset")) {
-    clearCurrentSession();
-  }
-
-  if (params.get("demo") === "team") {
-    ui.skipRemoteSync = true;
-    ui.demoToolsVisible = params.get("tools") === "1";
-    startTeamDemo();
-  }
-
-  if (params.get("demo") === "council") {
-    ui.skipRemoteSync = true;
-    ui.demoToolsVisible = false;
-    startTeamDemo("team_bruine_kroeg");
-    demoDrawCard("team_bruine_kroeg", "fund");
-    submitProofInWhatsapp("team_bruine_kroeg");
-    clearCurrentSession();
-    loginKroegraad("LARS", "0311");
-  }
-
-  if (params.get("demo") === "approval") {
-    ui.skipRemoteSync = true;
-    ui.demoToolsVisible = false;
-    const view = params.get("as") ?? "lars";
-    const teamByView = {
-      bruine: "team_bruine_kroeg",
-      zwarte: "team_zwarte_pint",
-      geel: "team_rode_neus",
-      witte: "team_witte_batavus"
-    };
-    const teamId = teamByView[view] ?? "team_bruine_kroeg";
-    startTeamDemo(teamId);
-    TEAMS.forEach((team, index) => {
-      demoDrawCard(team.id, index === 1 ? "chance" : "fund");
-      submitProofInWhatsapp(team.id);
-    });
-
-    if (view === "lars" || view === "swen") {
-      clearCurrentSession();
-      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
-    }
-  }
-
-  if (params.get("demo") === "lobby") {
-    ui.skipRemoteSync = true;
-    ui.demoToolsVisible = false;
-    const view = params.get("as") ?? "lars";
-    const teamByView = {
-      bruine: "team_bruine_kroeg",
-      zwarte: "team_zwarte_pint",
-      geel: "team_rode_neus",
-      witte: "team_witte_batavus"
-    };
-    const teamId = teamByView[view] ?? "team_bruine_kroeg";
-    startLobbyDemo(teamId);
-
-    if (view === "lars" || view === "swen") {
-      clearCurrentSession();
-      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
-    }
-  }
-
-  if (params.get("demo") === "countdown") {
-    ui.skipRemoteSync = true;
-    ui.demoToolsVisible = false;
-    const view = params.get("as") ?? "lars";
-    const teamByView = {
-      bruine: "team_bruine_kroeg",
-      zwarte: "team_zwarte_pint",
-      geel: "team_rode_neus",
-      witte: "team_witte_batavus"
-    };
-    const teamId = teamByView[view] ?? "team_bruine_kroeg";
-    startLobbyDemo(teamId);
-
-    if (view === "lars" || view === "swen") {
-      clearCurrentSession();
-      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
-    }
-
-    startCountdown();
-  }
-
-  if (params.get("demo") === "finished") {
-    ui.skipRemoteSync = true;
-    ui.demoToolsVisible = false;
-    const view = params.get("as") ?? "bruine";
-    const teamByView = {
-      bruine: "team_bruine_kroeg",
-      zwarte: "team_zwarte_pint",
-      geel: "team_rode_neus",
-      witte: "team_witte_batavus"
-    };
-    const teamId = teamByView[view] ?? "team_bruine_kroeg";
-    startFinishedDemo(teamId);
-
-    if (view === "lars" || view === "swen") {
-      clearCurrentSession();
-      loginKroegraad(view.toUpperCase(), view === "swen" ? "0805" : "0311");
-    }
-  }
-
-  if (shouldCleanUrl) {
-    window.history.replaceState({}, "", window.location.pathname);
-  }
-}
-
-consumeLaunchParams();
-subscribe(renderFromStoreUpdate);
-if (ui.skipRemoteSync) {
-  ui.syncMode = "demo";
-  console.info("Zuip-O-Poly draait in lokale demo-modus.");
-} else {
-  initializeRemoteSync().then((result) => {
-    ui.syncMode = result.mode;
-    if (result.mode === "remote") {
-      console.info("Zuip-O-Poly draait met Supabase realtime sync.");
-    } else {
-      console.info("Zuip-O-Poly draait lokaal. Supabase is nog niet actief.");
-    }
-    render();
-  });
-}
-setInterval(() => {
+window.setInterval(() => {
   runClockTick();
-  updateLiveClockText();
+  const state = getState();
+  const session = getSession();
+  const teamState = state?.teams?.[session?.teamId];
+  // Zichtbare klokjes (countdown, opdracht-, wacht- en celtimers) verversen.
+  const hasVisibleTimer =
+    state?.phase === GAME_PHASE.COUNTDOWN ||
+    (teamState &&
+      (teamState.waitUntil ||
+        teamState.jailUntil ||
+        (teamState.currentTask?.timerSeconds &&
+          teamState.status === TEAM_STATUS.TASK_ACTIVE &&
+          getTaskConfirmRemaining(teamState) > 0)));
+  if (hasVisibleTimer) {
+    render();
+  }
 }, 1000);
 
-function updateLiveClockText() {
-  const state = getState();
-  const countdownNodes = document.querySelectorAll(".js-countdown, .council-count");
-  if (countdownNodes.length) {
-    const remaining = String(getCountdownRemaining(state) ?? GAME_CONFIG.countdownSeconds);
-    countdownNodes.forEach((node) => {
-      node.textContent = remaining;
-    });
-  }
-
-  const session = getCurrentSession();
-  if (session?.role === "team") {
-    const teamState = getTeamState(session.teamId, state);
-    const timerNode = document.querySelector("[data-live-team-timer]");
-    if (timerNode && teamState?.status === TEAM_STATUS.IN_JAIL) {
-      timerNode.textContent = `Celstraf: ${formatShortTimer(getTeamCountdownSeconds(teamState, "jailUntil") ?? 0)}`;
-    }
-    if (timerNode && teamState?.status === TEAM_STATUS.WAITING_SWAP) {
-      timerNode.textContent = `Wachten: ${formatShortTimer(getTeamCountdownSeconds(teamState, "waitUntil") ?? 0)}`;
-    }
-  }
-
+if (new URLSearchParams(window.location.search).get("reset") === "1") {
+  clearSession();
 }
+
+if (getSession()?.roomCode) {
+  connectSync();
+}
+
+render();
