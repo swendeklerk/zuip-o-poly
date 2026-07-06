@@ -1,18 +1,21 @@
-import { SUPABASE_CONFIG } from "../config/supabaseConfig.js";
 import { getSupabaseClient } from "./supabaseClient.js";
 
 const TABLE = "game_states";
 
-export async function loadRemoteGameState() {
+function rowIdForRoom(roomCode) {
+  return `room_${String(roomCode ?? "").trim().toUpperCase()}`;
+}
+
+export async function loadRemoteGameState(roomCode) {
   const client = await getSupabaseClient();
-  if (!client) {
+  if (!client || !roomCode) {
     return null;
   }
 
   const { data, error } = await client
     .from(TABLE)
     .select("state")
-    .eq("id", SUPABASE_CONFIG.gameId)
+    .eq("id", rowIdForRoom(roomCode))
     .maybeSingle();
 
   if (error) {
@@ -23,14 +26,14 @@ export async function loadRemoteGameState() {
   return data?.state ?? null;
 }
 
-export async function saveRemoteGameState(state) {
+export async function saveRemoteGameState(roomCode, state) {
   const client = await getSupabaseClient();
-  if (!client) {
+  if (!client || !roomCode) {
     return false;
   }
 
   const { error } = await client.from(TABLE).upsert({
-    id: SUPABASE_CONFIG.gameId,
+    id: rowIdForRoom(roomCode),
     state,
     updated_at: new Date().toISOString()
   });
@@ -43,21 +46,22 @@ export async function saveRemoteGameState(state) {
   return true;
 }
 
-export async function subscribeRemoteGameState(onState) {
+export async function subscribeRemoteGameState(roomCode, onState) {
   const client = await getSupabaseClient();
-  if (!client) {
+  if (!client || !roomCode) {
     return () => {};
   }
 
+  const rowId = rowIdForRoom(roomCode);
   const channel = client
-    .channel(`game-state-${SUPABASE_CONFIG.gameId}`)
+    .channel(`game-state-${rowId}`)
     .on(
       "postgres_changes",
       {
         event: "*",
         schema: "public",
         table: TABLE,
-        filter: `id=eq.${SUPABASE_CONFIG.gameId}`
+        filter: `id=eq.${rowId}`
       },
       (payload) => {
         if (payload.new?.state) {

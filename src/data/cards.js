@@ -1,3 +1,16 @@
+// Kans = chaos en risico. Algemeen Fonds = voordeel en tactiek.
+// effectType bepaalt hoe de store de kaart verwerkt:
+//   task                  fysieke opdracht, self-confirm of skip met straf
+//   move_self             eigen team delta vakjes verplaatsen, nieuw vak direct uitvoeren
+//   return_previous_street terug naar vorige straatvak
+//   jail_self             direct naar de echte cel
+//   bonus_roll            direct extra worp, telt niet als normale beurt
+//   saved_powerup         power-up bewaren voor later
+//   team_choice_move      ander team kiezen en delta verplaatsen
+//   team_choice_wait      ander team kiezen, opdracht vervalt, wachttimer
+//   swap_positions        ander team kiezen en van positie wisselen (geen wachttijd)
+//   bank_verdict          de app bepaalt direct schuld of meevaller
+
 const CHANCE_CARDS = [
   {
     id: "chance-stijn-kijkt-mee",
@@ -20,7 +33,8 @@ const CHANCE_CARDS = [
     title: "Blind Vertrouwen",
     body:
       "Jullie zicht is tijdelijk uitgeschakeld. Een actief teamlid krijgt de blinddoek om. De rest begeleidt deze persoon naar de bar en laat hem of haar bestellen. Bij de bar mag de blinddoek even af. Daarna gaat de blinddoek opnieuw om en neemt dezelfde persoon geblinddoekt een flinke slok van het drankje.",
-    effectType: "task"
+    effectType: "task",
+    timerType: "bar"
   },
   {
     id: "chance-jij-bent-m",
@@ -42,7 +56,8 @@ const CHANCE_CARDS = [
     title: "Dorstige Douane",
     body:
       "Ho, stop. De Dorstige Douane heeft jullie staande gehouden. Ieder actief teamlid moet 1 minuut op een been blijven staan. Tijdens deze minuut zegt ieder teamlid om de beurt: \"Ik ben volledig nuchter en betrouwbaar.\" Valt iemand om, raakt iemand met de tweede voet de grond of vergeet iemand de zin, dan begint de opdracht opnieuw.",
-    effectType: "task"
+    effectType: "task",
+    timerType: "short"
   },
   {
     id: "chance-wie-niet-weg-is",
@@ -57,8 +72,7 @@ const CHANCE_CARDS = [
     title: "Direct Naar De Cel",
     body:
       "Geen discussie. Geen uitleg. Geen hoger beroep. Jullie gedrag is beoordeeld en de conclusie is duidelijk: dit team moet even achter slot en grendel.\n\nEffect: ga direct naar de cel. Wacht 4 minuten. Daarna verschijnt de strafopdracht.",
-    effectType: "jail_self",
-    waitSeconds: 240
+    effectType: "jail_self"
   }
 ];
 
@@ -69,12 +83,24 @@ const FUND_CARDS = [
     popup:
       "Oei! Een gesprek bij de bank kan natuurlijk heel goed uitpakken, maar ook heel slecht...",
     body:
-      "Er is iets opgedoken in de administratie van Zuip-O-Poly... De Bank heeft jullie dossier geopend, en onderzoekt momenteel of er nog een alcoholschuld openstaat, of dat er juist een alcoholische meevaller is gevonden.\n\nBel De Bank om er achter te komen:\n+31 6 49 89 84 74",
-    reviewBody:
-      "Team belt de Bank. De Bank kiest live of het team een alcoholschuld moet aflossen of een alcoholische meevaller krijgt. Mogelijkheden: ieder actief teamlid drinkt een biertje, ieder actief teamlid neemt een shotje naar keuze van De Bank, of het team deelt bier/shotjes uit aan ieder actief teamlid van een gekozen team. De uitspraak van De Bank is definitief.",
-    rules:
-      "De Bank mag extra voorwaarden toevoegen zolang het met drinken te maken heeft. Team hoeft in de app alleen bewijs aan te leveren van de uitgevoerde uitkomst.",
-    effectType: "task",
+      "Er is iets opgedoken in de administratie van Zuip-O-Poly... De Bank heeft jullie dossier geopend en onderzoekt of er nog een alcoholschuld openstaat, of dat er juist een alcoholische meevaller is gevonden.\n\nDe app doet direct uitspraak. De uitspraak van De Bank is definitief.",
+    effectType: "bank_verdict",
+    verdicts: [
+      {
+        id: "schuld",
+        title: "Alcoholschuld gevonden",
+        body:
+          "De Bank heeft een openstaande alcoholschuld gevonden. Aflossen, nu. Ieder actief teamlid neemt een shotje naar keuze. Geen shotjes in de buurt? Dan telt een adtje ook.",
+        timerType: "bar"
+      },
+      {
+        id: "meevaller",
+        title: "Alcoholische meevaller",
+        body:
+          "De Bank heeft een alcoholische meevaller gevonden! Kies een ander team, bel ze op en deel een drankje uit aan ieder actief teamlid van dat team. Zij drinken, jullie genieten.",
+        timerType: "bar"
+      }
+    ],
     oncePerTeam: true
   },
   {
@@ -88,7 +114,7 @@ const FUND_CARDS = [
     id: "fund-tjarda-de-spelleider",
     title: "Tjarda de Spelleider",
     body:
-      "Jullie hebben geluk. Tjarda is vandaag de spelleider en ziet blijkbaar precies genoeg om dit volledig door de vingers te zien.\n\nEffect: bewaar deze kaart. Jullie mogen deze een keer inzetten om een opdracht over te slaan. Na inzetten mogen jullie direct opnieuw gooien. Deze bonusworp telt niet mee als normale dobbelbeurt.",
+      "Jullie hebben geluk. Tjarda is vandaag de spelleider en ziet blijkbaar precies genoeg om dit volledig door de vingers te zien.\n\nEffect: bewaar deze kaart. Jullie mogen deze een keer inzetten om een opdracht over te slaan zonder straf. Na inzetten mogen jullie direct opnieuw gooien. Deze bonusworp telt niet mee als normale dobbelbeurt.",
     effectType: "saved_powerup",
     powerUpLabel: "Opdracht overslaan",
     savedPowerUpType: "skip_task"
@@ -97,7 +123,7 @@ const FUND_CARDS = [
     id: "fund-hong-beschermt",
     title: "Hong Beschermt",
     body:
-      "Er hangt tijdelijk iets boven jullie hoofd. Geen idee wat precies, maar het voelt verdacht veel als Hong die van boven even meeblokt.\n\nEffect: bewaar deze kaart. De eerstvolgende keer dat een ander team jullie probeert te naaien, kan deze actie worden geblokkeerd.",
+      "Er hangt tijdelijk iets boven jullie hoofd. Geen idee wat precies, maar het voelt verdacht veel als Hong die van boven even meeblokt.\n\nEffect: bewaar deze kaart. De eerstvolgende keer dat een ander team jullie probeert te naaien, wordt die actie automatisch geblokkeerd.",
     effectType: "saved_powerup",
     powerUpLabel: "Hong Beschermt",
     savedPowerUpType: "shield"
@@ -122,7 +148,7 @@ const FUND_CARDS = [
     id: "fund-celvrij-kaart",
     title: "Celvrij Kaart",
     body:
-      "Deze kaart bewaar je tot het moment dat het echt misgaat. Zit je straks in de cel? Niet vandaag.\n\nEffect: bewaar deze kaart. Als jullie later in de echte cel komen, mogen jullie een keer direct uit de cel zonder wachttijd en zonder Keizer Karelplein-opdracht.",
+      "Deze kaart bewaar je tot het moment dat het echt misgaat. Zit je straks in de cel? Niet vandaag.\n\nEffect: bewaar deze kaart. Als jullie later in de echte cel komen, mogen jullie een keer direct uit de cel zonder wachttijd en zonder strafopdracht.",
     effectType: "saved_powerup",
     powerUpLabel: "Celvrij",
     savedPowerUpType: "jail_free"
@@ -135,13 +161,13 @@ const FUND_CARDS = [
     effectType: "swap_positions"
   },
   {
-    id: "fund-bezwaar-kroegraad",
-    title: "Bezwaar bij de Kroegraad",
+    id: "fund-vrijbrief-van-het-bord",
+    title: "Vrijbrief van het Bord",
     body:
-      "De Kroegraad denkt dat ze de baas zijn. Meestal klopt dat. Maar vandaag hebben jullie een keer een officieel bezwaarschrift op zak.\n\nEffect: bewaar deze kaart. Jullie mogen een keer een afkeuring van de Kroegraad omzetten naar goedgekeurd, tenzij het bewijs volledig ontbreekt.",
+      "Het bord is streng, maar vandaag heeft het een zwak moment. Jullie krijgen zwart op wit een officiële vrijbrief.\n\nEffect: bewaar deze kaart. Jullie mogen één keer een opdracht skippen zonder de 2-vakjes-straf.",
     effectType: "saved_powerup",
-    powerUpLabel: "Bezwaar",
-    savedPowerUpType: "objection"
+    powerUpLabel: "Gratis skip",
+    savedPowerUpType: "skip_free"
   }
 ];
 
