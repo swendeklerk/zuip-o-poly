@@ -1,0 +1,209 @@
+.council-command {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border-color: rgba(244, 191, 69, 0.22);
+  background:
+    linear-gradient(145deg, rgba(244, 191, 69, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.025)),
+    rgba(9, 8, 9, 0.96);
+}
+
+.council-command h2 {
+  margin-bottom: 0;
+  color: #fff7ec;
+  font-size: 1.38rem;
+}
+
+.council-live-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-card {
+  display: grid;
+  gap: 3px;
+  min-height: 64px;
+  align-content: center;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.26);
+}
+
+.metric-card span {
+  color: #b9aeb0;
+  font-size: 0.66rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  color: #fff7ec;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.metric-card.is-review {
+  border-color: rgba(244, 191, 69, 0.32);
+  background:
+    radial-gradient(circle at 80% 10%, rgba(244, 191, 69, 0.18), transparent 42%),
+    rgba(0, 0, 0, 0.26);
+}
+
+.metric-card.is-review strong {
+  color: #ffd86d;
+}
+
+.council-alert,
+.council-empty-review {
+  padding: 11px 12px;
+  border-radius: 7px;
+  font-size: 0.84rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.council-alert {
+  border: 1px solid rgba(244, 191, 69, 0.42);
+  color: #ffe6a3;
+  background:
+    linear-gradient(90deg, rgba(244, 191, 69, 0.14), transparent 70%),
+    rgba(0, 0, 0, 0.22);
+}
+
+.council-empty-review {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cfc5c7;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.council-card {
+  border-radius: 7px;
+  overflow: visible;
+}
+
+.council-card .team-card-top {
+  grid-template-columns: 30px minmax(0, 1fr) auto auto;
+  padding: 13px;
+}
+
+.council-card h2 {
+  color: #fff7ec;
+}
+
+.council-card .team-card-top p {
+  color: #b9aeb0;
+  font-size: 0.72rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  color: #f7edf0;
+  font-size: 0.7rem;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status-badge.is-review {
+  border-color: rgba(244, 191, 69, 0.72);
+  color: #ffd86d;
+  background: rgba(244, 191, 69, 0.12);
+  box-shadow: 0 0 22px rgba(244, 191, 69, 0.22);
+}
+
+.status-badge.is-busy {
+  border-color: rgba(179, 39, 255, 0.38);
+  color: #d983ff;
+  background: rgba(179, 39, 255, 0.1);
+}
+
+.status-badge.is-finished {
+  border-color: rgba(99, 255, 161, 0.38);
+  color: #7cffad;
+  background: rgba(99, 255, 161, 0.08);
+}
+
+.status-badge.is-neutral {
+  color: #d7d0d2;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.council-card.needs-review {
+  border-color: rgba(244, 191, 69, 0.9);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(244, 191, 69, 0.2), transparent 35%),
+    radial-gradient(circle at 100% 0%, rgba(238, 27, 47, 0.16), transparent 30%),
+    rgba(10, 8, 10, 0.98);
+  box-shadow:
+    0 0 34px rgba(244, 191, 69, 0.22),
+    inset 0 0 0 1px rgba(244, 191, 69, 0.16);
+}
+
+.council-status {
+  margin: 0 13px 13px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  color: #d7cfd1;
+  background: rgba(0, 0, 0, 0.22);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.review-task {
+  margin: 0 13px 13px;
+}
+
+.review-task h3 {
+  text-align: left;
+}
+
+.review-actions {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 13px 13px;
+}
+
+.review-actions .button {
+  min-height: 54px;
+  border-radius: 7px;
+  font-size: 0.98rem;
+}
+
+.review-actions .approve {
+  border-color: rgba(99, 255, 161, 0.6);
+  color: #79ffab;
+  background:
+    linear-gradient(180deg, rgba(99, 255, 161, 0.14), rgba(99, 255, 161, 0.05)),
+    rgba(0, 0, 0, 0.28);
+}
+
+.review-actions .reject {
+  border-color: rgba(255, 48, 72, 0.7);
+  color: #ff6d7d;
+  background:
+    linear-gradient(180deg, rgba(255, 48, 72, 0.14), rgba(255, 48, 72, 0.05)),
+    rgba(0, 0, 0, 0.28);
+}
+
+@media (max-width: 370px) {
+  .council-card .team-card-top {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+  }
+
+  .council-card .status-badge {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}

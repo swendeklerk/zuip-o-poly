@@ -1,0 +1,12 @@
+dist/
+config.js
+.env
+.env.local
+
+# Oude upload-/updatekopieën, geen onderdeel van de app
+SLEEP_DIT_IN_GITHUB_ROOT/
+UPDATE_BORD_LOGO/
+UPDATE_DOBBELSTEEN_ANIMATIE/
+UPDATE_DOBBELSTEEN_GOED/
+UPDATE_KROEGRAAD_LIVE/
+UPLOAD_NAAR_GITHUB/

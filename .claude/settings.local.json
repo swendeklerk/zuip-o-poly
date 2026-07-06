@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"C:\\\\Users\\\\swen\\\\documents\\\\Codex\\\\2026-05-22\\\\files-mentioned-by-the-user-codex\\\\UPLOAD_COMPLETE_APP_NU\\\\zuip-o-poly-github-upload/docs\" -type f 2>/dev/null *)",
+      "Read(//c/Users/swen/documents/Codex/2026-05-22/**)",
+      "Bash(ls -la \"C:\\\\Users\\\\swen\\\\OneDrive - de Kock Elektro\\\\Prive\\\\Zuip-O-Poly\\\\\" 2>&1)",
+      "Read(//FP1/Folderredirection$/swen/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/b2701b9d-d8a1-42e3-8271-7d976f63aad5/e89a4ebd-32c7-46b9-961f-17408be570d8/skills/**)",
+      "Bash(extract-text \"C:\\\\Users\\\\swen\\\\OneDrive - de Kock Elektro\\\\Prive\\\\Zuip-O-Poly\\\\Zuip-O-Poly Nijmegen Editie.docx\")",
+      "Bash(ls \"//FP1/Folderredirection\\\\$/swen/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/b2701b9d-d8a1-42e3-8271-7d976f63aad5/e89a4ebd-32c7-46b9-961f-17408be570d8/bin\" 2>&1)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\swen\\\\documents\\\\Codex\\\\2026-05-22\\\\files-mentioned-by-the-user-codex\\\\UPLOAD_COMPLETE_APP_NU\\\\zuip-o-poly-github-upload\" -Recurse -Directory)",
+      "Bash(Select-Object FullName)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Baseline: bestaande Zuip-O-Poly MVP vóór self-running rebuild *)"
+    ]
+  }
+}
