@@ -138,7 +138,8 @@ let lastCountdownValue = null;
 // Stap-voor-stap pion-animatie. De store verplaatst de pion direct naar de
 // eindpositie; de UI laat 'm zichtbaar vak voor vak lopen via lastMove.steps.
 const WALK_STEP_MS = 150;
-let walk = { active: false, cells: [], index: 0, timer: null, movedAt: 0 };
+const DICE_REVEAL_MS = 750;
+let walk = { active: false, reveal: false, cells: [], index: 0, timer: null, revealTimer: null, movedAt: 0, roll: null };
 let walkInited = false;
 
 function boardWrap(n) {
@@ -171,9 +172,22 @@ function maybeStartWalk(state, teamState) {
     pos = boardWrap(pos + dir);
     cells.push(pos);
   }
-  walk = { ...walk, active: true, cells, index: 0 };
+
+  // Alleen bij een echte worp eerst het getal groots onthullen.
+  const showReveal = ["roll", "bonus_roll"].includes(move.source);
+  walk = { ...walk, active: true, reveal: showReveal, cells, index: 0, roll: move.roll };
   window.clearInterval(walk.timer);
-  walk.timer = window.setInterval(advanceWalk, WALK_STEP_MS);
+  window.clearTimeout(walk.revealTimer);
+
+  if (showReveal) {
+    walk.revealTimer = window.setTimeout(() => {
+      walk.reveal = false;
+      render();
+      walk.timer = window.setInterval(advanceWalk, WALK_STEP_MS);
+    }, DICE_REVEAL_MS);
+  } else {
+    walk.timer = window.setInterval(advanceWalk, WALK_STEP_MS);
+  }
   return true;
 }
 
@@ -615,7 +629,7 @@ function renderGame(state, teamState) {
 
       ${renderBoard(state, teamState, pawnPosition)}
 
-      ${walking ? renderWalkingPanel(teamState) : `
+      ${walking ? (walk.reveal ? renderDiceReveal(teamState) : renderWalkingPanel(teamState)) : `
         ${renderActionArea(state, teamState)}
         ${renderPowerUps(state, teamState)}
         ${state.isDemo ? renderDemoPanel(state, teamState) : ""}
@@ -626,6 +640,20 @@ function renderGame(state, teamState) {
       ${walking ? "" : renderPopup(state, teamState)}
       ${walking ? "" : renderDialog(state, teamState)}
     </div>
+  `;
+}
+
+function renderDiceReveal(teamState) {
+  const roll = walk.roll ?? teamState.lastRoll ?? 1;
+  return `
+    <section class="panel action-panel dice-reveal-panel">
+      <div class="dice-stage">
+        <div class="die die-${roll} die-reveal">
+          ${[1, 2, 3, 4, 5, 6].map((pip) => `<span class="pip pip-${pip}"></span>`).join("")}
+        </div>
+      </div>
+      <p class="dice-reveal-text">Gegooid: <strong>${roll}</strong></p>
+    </section>
   `;
 }
 
