@@ -744,6 +744,24 @@ function renderDicePanel(state, teamState) {
   `;
 }
 
+// Kleur + icoon + label per vaktype, zodat je meteen ziet wat voor vak het is.
+const TASK_THEMES = {
+  Straatvak: { tag: "Kroeg", icon: "🍺", accent: "#ffb02e" },
+  Snackstation: { tag: "Snackstation", icon: "🍟", accent: "#ff7a00" },
+  "Vast strafvak": { tag: "Strafvak", icon: "⚠️", accent: "#e8001d" },
+  "Vast speciaal vak": { tag: "Speciaal vak", icon: "⚡", accent: "#00d4ff" },
+  "Parkeeropdracht / chillvak": { tag: "Vrij Parkeren", icon: "🅿️", accent: "#00d464" },
+  Celstraf: { tag: "Celstraf", icon: "🔒", accent: "#e8001d" },
+  "Cel Bezoekvak": { tag: "Op bezoek", icon: "📸", accent: "#ffd600" }
+};
+
+function getTaskTheme(task, teamState) {
+  if (task.presentation === "chance") return { tag: "Kans", icon: "🎲", accent: "#ff2d44" };
+  if (task.presentation === "fund") return { tag: "Algemeen Fonds", icon: "💰", accent: "#c800ff" };
+  const type = findTileById(teamState?.position)?.type ?? "";
+  return TASK_THEMES[type] ?? { tag: "Opdracht", icon: "🎯", accent: "var(--team-accent)" };
+}
+
 function renderTaskPanel(state, teamState) {
   const task = teamState.currentTask;
   if (!task) {
@@ -765,24 +783,41 @@ function renderTaskPanel(state, teamState) {
   const specialIncomplete =
     (task.specialFlow === "dock17" && !task.dock17Revealed) ||
     (task.specialFlow === "vanOuds" && !task.vanOudsComplete);
-  const kindClass = task.presentation === "chance" ? "card-chance" : task.presentation === "fund" ? "card-fund" : "";
+  const theme = getTaskTheme(task, teamState);
+  const ready = !timerBusy && !specialIncomplete;
+
+  // Refresh-proof timerbalk: CSS-animatie met negatieve delay = verstreken tijd.
+  const total = task.timerSeconds || 0;
+  const elapsed = total - remaining;
+  const timerBar = timerBusy
+    ? `
+      <div class="task-timer" role="timer">
+        <div class="timer-track">
+          <div class="timer-fill" style="animation: taskTimerFill ${total}s linear ${-elapsed}s forwards;"></div>
+        </div>
+        <span class="timer-label">${fmtTime(remaining)}</span>
+      </div>
+    `
+    : "";
 
   return `
-    <section class="panel action-panel task-panel ${kindClass}">
-      <span class="field-label">${esc(task.presentation === "chance" ? "Kans" : task.presentation === "fund" ? "Algemeen Fonds" : "Opdracht")}</span>
-      <h2 class="task-title">${esc(task.title)}</h2>
-      ${task.location && task.location !== task.title ? `<p class="task-location">${esc(task.location)}</p>` : ""}
+    <section class="panel action-panel task-panel task-themed" style="--task-accent:${theme.accent}">
+      <div class="task-emblem" aria-hidden="true">${theme.icon}</div>
+      <div class="task-head">
+        <span class="task-tag">${theme.icon} ${esc(theme.tag)}</span>
+        <h2 class="task-title">${esc(task.title)}</h2>
+      </div>
       <div class="task-body">${nl2br(task.body)}</div>
       ${task.rules ? `<details class="task-rules"><summary>Regels</summary><p>${nl2br(task.rules)}</p></details>` : ""}
       ${specialBlock}
-      ${timerBusy ? `<p class="task-timer">Opdracht bezig: <strong>${fmtTime(remaining)}</strong></p>` : ""}
+      ${timerBar}
 
       <div class="task-actions">
         ${task.bonusPowerUp ? `
-          <button class="button primary big" data-action="confirm-task" ${timerBusy || specialIncomplete ? "disabled" : ""}>Gedaan, wij zweren het</button>
-          <button class="button gold big" data-action="confirm-task-bonus" ${timerBusy || specialIncomplete ? "disabled" : ""}>Gedaan mét bonus (${esc(task.bonusPowerUp.label)})</button>
+          <button class="button primary big ${ready ? "cta-pulse" : ""}" data-action="confirm-task" ${ready ? "" : "disabled"}>Gedaan, wij zweren het</button>
+          <button class="button gold big" data-action="confirm-task-bonus" ${ready ? "" : "disabled"}>Gedaan mét bonus (${esc(task.bonusPowerUp.label)})</button>
         ` : `
-          <button class="button primary big" data-action="confirm-task" ${timerBusy || specialIncomplete ? "disabled" : ""}>Gedaan, wij zweren het</button>
+          <button class="button primary big ${ready ? "cta-pulse" : ""}" data-action="confirm-task" ${ready ? "" : "disabled"}>Gedaan, wij zweren het</button>
         `}
         ${task.skippable !== false ? `
           <button class="button ghost" data-action="ask-skip">Opdracht skippen (−${GAME_CONFIG.skipPenaltySteps} vakjes)</button>
@@ -1664,7 +1699,7 @@ function updateVisibleTimers() {
 
   if (teamState.status === TEAM_STATUS.TASK_ACTIVE && teamState.currentTask?.timerSeconds) {
     const remaining = getTaskConfirmRemaining(teamState);
-    const el = document.querySelector(".task-timer strong");
+    const el = document.querySelector(".task-timer .timer-label");
     if (remaining > 0) {
       if (el) {
         el.textContent = fmtTime(remaining);

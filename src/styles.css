@@ -769,20 +769,85 @@ p {
   gap: 12px;
 }
 
-/* Opdrachtkaart */
+/* Opdrachtkaart — thema per vaktype */
 
-.task-title {
-  font-size: 1.6rem;
+.task-themed {
+  position: relative;
+  overflow: hidden;
+  border-top: 4px solid var(--task-accent, var(--team-accent));
+  background:
+    radial-gradient(140% 90% at 100% 0%, color-mix(in srgb, var(--task-accent) 16%, transparent), transparent 60%),
+    var(--surface);
+  animation: taskCardIn 320ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
 }
 
-.task-location {
-  color: var(--text-muted);
-  font-size: 0.88rem;
+@keyframes taskCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Groot, vaag icoon-watermerk in de hoek. */
+.task-emblem {
+  position: absolute;
+  top: -14px;
+  right: -6px;
+  font-size: 5.5rem;
+  line-height: 1;
+  opacity: 0.12;
+  filter: grayscale(0.2);
+  transform: rotate(8deg);
+  pointer-events: none;
+  animation: emblemFloat 5s ease-in-out infinite;
+}
+
+@keyframes emblemFloat {
+  0%, 100% { transform: rotate(8deg) translateY(0); }
+  50% { transform: rotate(6deg) translateY(-5px); }
+}
+
+.task-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.task-tag {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--task-accent, var(--team-accent));
+  background: color-mix(in srgb, var(--task-accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--task-accent) 45%, transparent);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.task-title {
+  font-size: 1.9rem;
+  line-height: 1.02;
+  color: var(--text);
 }
 
 .task-body {
-  font-size: 0.95rem;
-  line-height: 1.55;
+  font-size: 0.98rem;
+  line-height: 1.6;
+  position: relative;
+  z-index: 1;
+}
+
+.task-rules {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .task-rules summary {
@@ -800,34 +865,67 @@ p {
   color: var(--text-muted);
 }
 
+/* Timerbalk die leegloopt (refresh-proof via CSS-animatie). */
 .task-timer {
-  color: var(--gold);
-  text-align: center;
-  padding: 8px;
-  border: 1px dashed rgba(255, 214, 0, 0.3);
-  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.task-timer strong {
-  font-size: 14px;
+.timer-track {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface3);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.timer-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--task-accent, var(--gold)), color-mix(in srgb, var(--task-accent) 55%, #fff));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--task-accent) 60%, transparent);
+}
+
+@keyframes taskTimerFill {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.timer-label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--task-accent, var(--gold));
+  min-width: 46px;
+  text-align: right;
 }
 
 .task-actions {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  position: relative;
+  z-index: 1;
 }
 
-/* Kaartkleuren per type */
-
-.task-panel.card-chance {
-  background: var(--card-chance-bg);
-  border-top: 4px solid var(--red);
+/* Pulserende bevestigknop zodra hij actief wordt. */
+.cta-pulse {
+  animation: ctaPulse 1.5s ease-in-out infinite;
 }
 
-.task-panel.card-fund {
-  background: var(--card-fund-bg);
-  border-top: 4px solid var(--purple);
+@keyframes ctaPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(232, 0, 29, 0);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(232, 0, 29, 0.5);
+    transform: scale(1.015);
+  }
 }
 
 /* Speciale flows (Dock 17, Van Ouds) */
