@@ -73,7 +73,8 @@ const ui = {
   createError: "",
   dialog: null, // {type:"skip"} | {type:"choose", targetId} | {type:"leave"}
   syncMode: "connecting", // connecting | remote | local
-  copied: false
+  copied: false,
+  cardFlipped: false
 };
 
 function esc(value) {
@@ -1064,6 +1065,30 @@ function renderPopup(state, teamState) {
 
   const kindClass = `popup-${popup.kind ?? "info"}`;
 
+  // Kans/Fonds: echte 3D-flipkaart (achterkant -> tik -> effect).
+  if (popup.stage === "intro" && (popup.kind === "chance" || popup.kind === "fund")) {
+    const label = popupKindLabel(popup.kind);
+    return `
+      <div class="popup-overlay">
+        <div class="flip-card ${kindClass} ${ui.cardFlipped ? "flipped" : ""}" data-action="flip-card">
+          <div class="flip-inner">
+            <div class="flip-face flip-back">
+              <span class="flip-kind">${esc(label)}</span>
+              <span class="flip-mark">?</span>
+              <span class="flip-hint">Tik om te draaien</span>
+            </div>
+            <div class="flip-face flip-front">
+              <span class="popup-kind">${esc(label)}</span>
+              <h2>${esc(popup.title)}</h2>
+              <div class="popup-body">${nl2br(popup.body ?? "")}</div>
+              <button class="button primary big" data-action="dismiss-popup">Oké</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   if (popup.stage === "intro") {
     return `
       <div class="popup-overlay">
@@ -1416,7 +1441,18 @@ app.addEventListener("click", (event) => {
     case "vanouds-spin":
       spinVanOudsWheel(session.teamId, target.dataset.choiceId);
       break;
+    case "flip-card": {
+      const card = target.closest(".flip-card");
+      if (card && !card.classList.contains("flipped")) {
+        const kind = getState()?.teams?.[session.teamId]?.activePopup?.kind;
+        feedback.cardFlip(kind === "fund" ? "fund" : "chance");
+        card.classList.add("flipped");
+        ui.cardFlipped = true; // consistent bij een eventuele her-render
+      }
+      break;
+    }
     case "dismiss-popup":
+      ui.cardFlipped = false;
       dismissPopup(session.teamId);
       break;
     case "reveal-popup": {
