@@ -1360,23 +1360,64 @@ subscribe(() => {
   render();
 });
 
-window.setInterval(() => {
-  runClockTick();
+// Werk alleen de zichtbare timer-getallen bij, zonder het scherm te herbouwen.
+// Zo knippert de kaart niet meer elke seconde. Structurele wijzigingen
+// (timer afgelopen, status verandert) lopen via runClockTick -> subscribe -> render.
+function updateVisibleTimers() {
   const state = getState();
   const session = getSession();
-  const teamState = state?.teams?.[session?.teamId];
-  // Zichtbare klokjes (countdown, opdracht-, wacht- en celtimers) verversen.
-  const hasVisibleTimer =
-    state?.phase === GAME_PHASE.COUNTDOWN ||
-    (teamState &&
-      (teamState.waitUntil ||
-        teamState.jailUntil ||
-        (teamState.currentTask?.timerSeconds &&
-          teamState.status === TEAM_STATUS.TASK_ACTIVE &&
-          getTaskConfirmRemaining(teamState) > 0)));
-  if (hasVisibleTimer) {
-    render();
+
+  if (state?.phase === GAME_PHASE.COUNTDOWN) {
+    const el = document.querySelector(".countdown-number");
+    const remaining = getCountdownRemaining(state);
+    if (el && remaining != null) {
+      el.textContent = remaining;
+    }
+    return;
   }
+
+  const teamState = state?.teams?.[session?.teamId];
+  if (!teamState) {
+    return;
+  }
+
+  if (teamState.status === TEAM_STATUS.TASK_ACTIVE && teamState.currentTask?.timerSeconds) {
+    const remaining = getTaskConfirmRemaining(teamState);
+    const el = document.querySelector(".task-timer strong");
+    if (remaining > 0) {
+      if (el) {
+        el.textContent = fmtTime(remaining);
+      }
+    } else if (el) {
+      // Timer net op 0: één keer volledig renderen zodat de knop actief wordt
+      // en de timerregel verdwijnt. Daarna is er geen .task-timer meer, dus
+      // geen herhaalde renders.
+      render();
+    }
+    return;
+  }
+
+  if ([TEAM_STATUS.WAITING_TIMER, TEAM_STATUS.WAITING_SWAP].includes(teamState.status)) {
+    const el = document.querySelector(".wait-timer");
+    const remaining = getTeamCountdownSeconds(teamState, "waitUntil");
+    if (el && remaining != null) {
+      el.textContent = fmtTime(remaining);
+    }
+    return;
+  }
+
+  if (teamState.status === TEAM_STATUS.IN_JAIL) {
+    const el = document.querySelector(".wait-timer");
+    const remaining = getTeamCountdownSeconds(teamState, "jailUntil");
+    if (el && remaining != null) {
+      el.textContent = fmtTime(remaining);
+    }
+  }
+}
+
+window.setInterval(() => {
+  runClockTick();
+  updateVisibleTimers();
 }, 1000);
 
 if (new URLSearchParams(window.location.search).get("reset") === "1") {
