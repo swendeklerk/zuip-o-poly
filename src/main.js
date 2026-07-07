@@ -1117,13 +1117,16 @@ function renderPopup(state, teamState) {
     `;
   }
 
+  // Sfeer-intro bij aankomst op een vak: naam groot + sfeertekst, één tik verder.
   if (popup.stage === "intro") {
+    const btnText = ["task", "snack", "parking"].includes(popup.kind) ? "Naar de opdracht" : "Verder";
     return `
       <div class="popup-overlay">
-        <div class="popup-card ${kindClass}">
-          <span class="popup-kind">${esc(popupKindLabel(popup.kind))}</span>
-          <h2>${esc(popup.title)}</h2>
-          <button class="button primary big" data-action="reveal-popup">Draai de kaart om</button>
+        <div class="popup-card sfeer-card ${kindClass}">
+          <span class="popup-kind">${esc(sfeerEyebrow(popup, teamState))}</span>
+          <h2 class="sfeer-name">${esc(popup.title)}</h2>
+          ${popup.body ? `<div class="popup-body sfeer-body">${nl2br(popup.body)}</div>` : ""}
+          <button class="button primary big" data-action="dismiss-popup">${btnText}</button>
         </div>
       </div>
     `;
@@ -1142,6 +1145,21 @@ function renderPopup(state, teamState) {
       </div>
     </div>
   `;
+}
+
+// Passend eyebrow-label voor de sfeer-intro, afgeleid van het vaktype.
+function sfeerEyebrow(popup, teamState) {
+  if (["chance", "fund", "swap", "start"].includes(popup.kind)) {
+    return popupKindLabel(popup.kind);
+  }
+  const type = findTileById(teamState?.position)?.type ?? "";
+  if (type.includes("Straatvak")) return "Kroeg";
+  if (type.includes("Snackstation")) return "Snackstation";
+  if (type.includes("Parkeer") || type.includes("chill")) return "Vrij Parkeren";
+  if (type.includes("straf")) return "Strafvak";
+  if (type.includes("speciaal")) return "Speciaal vak";
+  if (type.includes("Cel")) return "Cel";
+  return "Aangekomen";
 }
 
 function popupKindLabel(kind) {

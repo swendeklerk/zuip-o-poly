@@ -1416,6 +1416,41 @@ p {
   font-size: 1.7rem;
 }
 
+/* ---- Sfeer-intro bij aankomst op een vak ---- */
+
+.sfeer-card {
+  border-top: 5px solid var(--team-accent);
+  text-align: center;
+  align-items: center;
+  background:
+    radial-gradient(120% 70% at 50% 0%, color-mix(in srgb, var(--team-accent) 16%, transparent), transparent 70%),
+    var(--surface);
+}
+
+.sfeer-name {
+  font-size: 2.2rem;
+  line-height: 1.02;
+  color: var(--team-accent);
+  text-shadow: 0 0 20px color-mix(in srgb, var(--team-accent) 45%, transparent);
+  animation: sfeerNameIn 400ms cubic-bezier(0.2, 1.2, 0.35, 1) both;
+}
+
+@keyframes sfeerNameIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sfeer-body {
+  text-align: left;
+  color: var(--text);
+}
+
 /* ---- Geraakt worden: schermbrede flits + shake + stempel ---- */
 
 body.hit-flash {
