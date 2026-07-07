@@ -102,6 +102,36 @@ function fmtTime(totalSeconds) {
 
 let renderQueued = false;
 
+// Herkent uitsluitend de pop-up van het GERAAKTE team (niet van de aanvaller).
+function isHitPopup(popup) {
+  if (!popup || popup.stage !== "detail") {
+    return false;
+  }
+  const title = (popup.title ?? "").toLowerCase();
+  return (
+    title.startsWith("jullie zijn geraakt") ||
+    title.startsWith("jullie zijn gewisseld") ||
+    title === "uno reverse!"
+  );
+}
+
+function hitStampLabel(popup) {
+  const title = (popup.title ?? "").toLowerCase();
+  if (title.startsWith("jullie zijn gewisseld")) {
+    return "GEWISSELD";
+  }
+  return "GERAAKT";
+}
+
+// Korte schermbrede rode flits + shake bij een inkomende klap.
+function flashHit() {
+  document.body.classList.remove("hit-flash");
+  // reflow forceren zodat de animatie opnieuw start
+  void document.body.offsetWidth;
+  document.body.classList.add("hit-flash");
+  window.setTimeout(() => document.body.classList.remove("hit-flash"), 650);
+}
+
 // Speelt geluid/trilling af bij belangrijke overgangen (geraakt, cel, power-up,
 // winst). Vuurt alleen op de overgang zelf, niet elke render.
 let sfxPrev = { inited: false, phase: null, status: null, popupSig: null, powerupCount: 0 };
@@ -123,11 +153,9 @@ function playTransitionFeedback(state, teamState) {
     if (powerupCount > sfxPrev.powerupCount) {
       feedback.powerup();
     }
-    if (popupSig && popupSig !== sfxPrev.popupSig && popup.stage === "detail") {
-      const title = (popup.title ?? "").toLowerCase();
-      if (title.includes("geraakt") || title.includes("gewisseld") || title.includes("uno reverse")) {
-        feedback.hit();
-      }
+    if (popupSig && popupSig !== sfxPrev.popupSig && isHitPopup(popup)) {
+      feedback.hit();
+      flashHit();
     }
   }
 
@@ -1101,9 +1129,11 @@ function renderPopup(state, teamState) {
     `;
   }
 
+  const hit = isHitPopup(popup);
   return `
     <div class="popup-overlay">
-      <div class="popup-card ${kindClass}">
+      <div class="popup-card ${kindClass} ${hit ? "popup-hit" : ""}">
+        ${hit ? `<div class="hit-stamp">${hitStampLabel(popup)}</div>` : ""}
         <span class="popup-kind">${esc(popupKindLabel(popup.kind))}</span>
         <h2>${esc(popup.title)}</h2>
         <div class="popup-body">${nl2br(popup.body ?? "")}</div>
