@@ -453,7 +453,7 @@ function renderLobby(state, teamState) {
 
       <section class="panel lobby-wait-panel">
         ${isStarter ? `
-          <p>Start het spel zodra alle teams klaar zijn.${enoughTeams ? "" : ` Minimaal ${GAME_CONFIG.minTeams} teams nodig.`}</p>
+          <p>Start het spel zodra alle teams zijn aangemeld. In je eentje testen kan ook — je kunt gewoon starten.</p>
           <button class="button primary big" data-action="start-game" ${enoughTeams ? "" : "disabled"}>Start het spel</button>
         ` : `
           <p>Jullie zitten in de spelkamer van Zuip-O-Poly Nijmegen. Wacht tot alle teams klaar zijn. Zodra het spel start, krijgen jullie de eerste instructie.</p>
