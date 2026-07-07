@@ -37,12 +37,21 @@ import {
   setPlayerCount,
   skipTask,
   spinVanOudsWheel,
+  startDemoGame,
   startGame,
   subscribe,
   takeoverTeam,
   updateDock17Choice,
-  usePowerUp
+  usePowerUp,
+  demoAlmostDone,
+  demoDrawCard,
+  demoFinishOpponents,
+  demoGivePowerUps,
+  demoIncomingAttack,
+  demoSkipTimer,
+  demoTeleport
 } from "./store/gameStore.js";
+import { TILES } from "./data/tiles.js";
 
 const app = document.getElementById("app");
 
@@ -163,7 +172,10 @@ function statusPill(teamState) {
   `;
 }
 
-function syncBadge() {
+function syncBadge(state = null) {
+  if (state?.isDemo) {
+    return '<span class="sync-badge sync-demo">TESTMODUS</span>';
+  }
   const labels = { connecting: "VERBINDEN…", remote: "LIVE", local: "LOKAAL" };
   return `<span class="sync-badge sync-${ui.syncMode}">${labels[ui.syncMode] ?? ""}</span>`;
 }
@@ -230,6 +242,7 @@ function renderEntry(notice = "") {
       <div class="home-actions">
         <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
         <button class="button ghost big" data-action="nav-join">Meedoen met spelcode</button>
+        <button class="button gold big" data-action="start-demo">Testmodus — probeer alles</button>
       </div>
       <section class="panel home-rules">
         <h2>Zo werkt het</h2>
@@ -407,7 +420,7 @@ function renderLobby(state, teamState) {
           </div>
           <button class="button ghost" data-action="copy-code">${ui.copied ? "Gekopieerd!" : "Kopieer"}</button>
         </div>
-        <p class="room-meta">Spelstand: <strong>${esc(mode.label)}</strong> · ${mode.turns} worpen per team ${syncBadge()}</p>
+        <p class="room-meta">Spelstand: <strong>${esc(mode.label)}</strong> · ${mode.turns} worpen per team ${syncBadge(state)}</p>
       </section>
 
       <section class="panel own-team-panel">
@@ -480,7 +493,7 @@ function renderGame(state, teamState) {
       <header class="game-header">
         <div class="game-header-top">
           ${teamChip(teamState)}
-          ${syncBadge()}
+          ${syncBadge(state)}
         </div>
         <div class="game-header-bottom">
           ${statusPill(teamState)}
@@ -497,6 +510,7 @@ function renderGame(state, teamState) {
 
       ${renderActionArea(state, teamState)}
       ${renderPowerUps(state, teamState)}
+      ${state.isDemo ? renderDemoPanel(state, teamState) : ""}
       ${renderBoard(state, teamState)}
       ${renderEventLog(state)}
 
@@ -766,6 +780,76 @@ function isPowerUpUsable(teamState, powerUp) {
     default:
       return false;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Testpaneel (alleen in testmodus)                                    */
+/* ------------------------------------------------------------------ */
+
+function renderDemoPanel(state, teamState) {
+  return `
+    <details class="panel demo-panel" open>
+      <summary>Testpaneel</summary>
+      <div class="demo-section">
+        <span class="field-label">Forceer worp (alleen bij "Mag gooien")</span>
+        <div class="demo-row">
+          ${[1, 2, 3, 4, 5, 6].map((n) => `
+            <button class="button ghost small demo-roll" data-action="demo-roll" data-roll="${n}">${n}</button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="demo-section">
+        <span class="field-label">Spring naar vak (voert het vak direct uit)</span>
+        <div class="demo-row demo-teleport-row">
+          <select id="demo-tile-select">
+            ${TILES.map((tile) => `<option value="${tile.id}" ${tile.id === teamState.position ? "selected" : ""}>${tile.id}. ${esc(tile.name)} — ${esc(tile.type)}</option>`).join("")}
+          </select>
+          <button class="button gold small" data-action="demo-teleport">Ga</button>
+        </div>
+        <div class="demo-row">
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="8">Kans</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="3">Fonds</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="16">Wisselstation</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="6">Snack</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="11">Cel (bezoek)</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="31">Naar de cel</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="32">Dock 17</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="33">Van Ouds (rad)</button>
+          <button class="button ghost small" data-action="demo-teleport-to" data-tile="29">Elektriciteit (bonus)</button>
+        </div>
+      </div>
+
+      <div class="demo-section">
+        <span class="field-label">Kaarten & power-ups</span>
+        <div class="demo-row">
+          <button class="button ghost small" data-action="demo-chance">Trek Kans</button>
+          <button class="button ghost small" data-action="demo-fund">Trek Fonds</button>
+          <button class="button ghost small" data-action="demo-powerups">Geef alle power-ups</button>
+        </div>
+      </div>
+
+      <div class="demo-section">
+        <span class="field-label">Simuleer aanval op jullie (schild blokkeert!)</span>
+        <div class="demo-row">
+          <button class="button ghost small" data-action="demo-attack" data-kind="move">2 achteruit</button>
+          <button class="button ghost small" data-action="demo-attack" data-kind="wait">Wachttijd</button>
+          <button class="button ghost small" data-action="demo-attack" data-kind="swap">Gewisseld</button>
+          <button class="button ghost small" data-action="demo-attack" data-kind="jail">Naar cel</button>
+        </div>
+      </div>
+
+      <div class="demo-section">
+        <span class="field-label">Tijd & einde</span>
+        <div class="demo-row">
+          <button class="button ghost small" data-action="demo-skip-timer">Sla timer over</button>
+          <button class="button ghost small" data-action="demo-almost-done">Nog 1 beurt</button>
+          <button class="button ghost small" data-action="demo-finish-bots">Tegenstanders klaar</button>
+          <button class="button ghost small" data-action="demo-restart">Herstart testmodus</button>
+        </div>
+      </div>
+    </details>
+  `;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1149,6 +1233,42 @@ app.addEventListener("click", (event) => {
     case "reveal-popup":
       revealPopupCard(session.teamId);
       break;
+    case "start-demo":
+    case "demo-restart":
+      startDemoGame();
+      break;
+    case "demo-roll":
+      rollDice(session.teamId, Number(target.dataset.roll));
+      break;
+    case "demo-teleport": {
+      const select = document.getElementById("demo-tile-select");
+      demoTeleport(select?.value);
+      break;
+    }
+    case "demo-teleport-to":
+      demoTeleport(target.dataset.tile);
+      break;
+    case "demo-chance":
+      demoDrawCard("chance");
+      break;
+    case "demo-fund":
+      demoDrawCard("fund");
+      break;
+    case "demo-powerups":
+      demoGivePowerUps();
+      break;
+    case "demo-attack":
+      demoIncomingAttack(target.dataset.kind);
+      break;
+    case "demo-skip-timer":
+      demoSkipTimer();
+      break;
+    case "demo-almost-done":
+      demoAlmostDone();
+      break;
+    case "demo-finish-bots":
+      demoFinishOpponents();
+      break;
     default:
       break;
   }
@@ -1263,7 +1383,12 @@ if (new URLSearchParams(window.location.search).get("reset") === "1") {
   clearSession();
 }
 
-if (getSession()?.roomCode) {
+// ?demo=1 start de testmodus direct.
+if (new URLSearchParams(window.location.search).get("demo") === "1" && !getSession()?.roomCode) {
+  startDemoGame();
+}
+
+if (getSession()?.roomCode && !getState()?.isDemo) {
   connectSync();
 }
 

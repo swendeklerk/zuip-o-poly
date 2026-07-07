@@ -1431,3 +1431,69 @@ p {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------------------------
+   Testpaneel (testmodus)
+   ------------------------------------------------------------------ */
+
+.sync-demo {
+  color: var(--ice);
+  border-color: rgba(0, 212, 255, 0.4);
+}
+
+.demo-panel {
+  border: 1px dashed rgba(0, 212, 255, 0.4);
+  gap: 14px;
+}
+
+.demo-panel summary {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  letter-spacing: 1px;
+  color: var(--ice);
+  cursor: pointer;
+  list-style: none;
+}
+
+.demo-panel summary::before {
+  content: "🔧 ";
+}
+
+.demo-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.demo-row .button.small {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.demo-roll {
+  flex: 1 1 0 !important;
+  font-family: var(--font-mono);
+}
+
+.demo-teleport-row {
+  flex-wrap: nowrap;
+}
+
+.demo-teleport-row select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: 8px 10px;
+}

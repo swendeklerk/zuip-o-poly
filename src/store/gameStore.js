@@ -355,6 +355,10 @@ export async function initializeRemoteSync() {
   if (!session?.roomCode) {
     return { ok: false, mode: "local" };
   }
+  // Testmodus blijft volledig lokaal.
+  if (getState()?.isDemo) {
+    return { ok: false, mode: "local" };
+  }
   if (remoteSyncReady) {
     return { ok: true, mode: "remote" };
   }
@@ -2077,6 +2081,363 @@ export function getRanking(state) {
 
 export function getTeamColorHex(teamState) {
   return findTeamColor(teamState?.colorId)?.hex ?? "#F0EEF4";
+}
+
+/* ------------------------------------------------------------------ */
+/* Testmodus (demo): direct spelen met alle functies, zonder tweede    */
+/* toestel. Draait volledig lokaal, sync wordt overgeslagen.           */
+/* ------------------------------------------------------------------ */
+
+const DEMO_ROOM_CODE = "TEST1";
+
+const DEMO_OPPONENTS = [
+  { name: "Team Tapstoring", colorId: "paars" },
+  { name: "De Biermeesters", colorId: "ijsblauw" },
+  { name: "Kelder & Co", colorId: "groen" }
+];
+
+export function startDemoGame() {
+  const teamId = createId("team");
+  const sessionId = createId("session");
+  const startedAt = now();
+
+  let state = createRoomState({
+    roomCode: DEMO_ROOM_CODE,
+    modeId: DEFAULT_MODE_ID,
+    starterTeamId: teamId
+  });
+  state.isDemo = true;
+  state.phase = GAME_PHASE.RUNNING;
+  state.countdownStartedAt = startedAt - GAME_CONFIG.countdownSeconds * 1000;
+  state.gameStartedAt = startedAt;
+
+  const ownTeam = createTeamState({ id: teamId, name: "Testteam", colorId: "geel", playerCount: 3 });
+  ownTeam.activeSessionId = sessionId;
+  ownTeam.status = TEAM_STATUS.CAN_ROLL;
+  state.teams[teamId] = ownTeam;
+
+  for (const opponent of DEMO_OPPONENTS) {
+    const botId = createId("team");
+    const bot = createTeamState({ id: botId, name: opponent.name, colorId: opponent.colorId, playerCount: 3 });
+    bot.activeSessionId = `bot_${botId}`;
+    bot.status = TEAM_STATUS.CAN_ROLL;
+    bot.position = 1 + Math.floor(Math.random() * 39);
+    bot.normalTurnsUsed = 2 + Math.floor(Math.random() * 6);
+    bot.completedRounds = Math.random() < 0.4 ? 1 : 0;
+    state.teams[botId] = bot;
+  }
+
+  state = logEvent(state, "Testmodus gestart. Alle functies staan open.");
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode: DEMO_ROOM_CODE, teamId, sessionId }));
+  window.localStorage.setItem(storageKey(DEMO_ROOM_CODE), JSON.stringify(state));
+  emit();
+  return { ok: true, teamId };
+}
+
+function demoOwnTeamId() {
+  return getSession()?.teamId ?? null;
+}
+
+// Spring direct naar een vak en voer het uit (alsof je er gooit).
+export function demoTeleport(tileId) {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    const teamState = state.teams[teamId];
+    if (!state.isDemo || !teamState) {
+      return state;
+    }
+    const position = Math.min(Math.max(Number(tileId) || 1, 1), GAME_CONFIG.boardSize);
+    const cleared = {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          position,
+          positionReachedAt: now(),
+          currentTask: null,
+          pendingTasks: [],
+          waitUntil: null,
+          jailUntil: null,
+          activePopup: null,
+          status: TEAM_STATUS.TASK_ACTIVE
+        }
+      }
+    };
+    return arriveAtTile(cleared, teamId, { viaEffect: false });
+  });
+}
+
+// Trek direct een Kans- of Fonds-kaart.
+export function demoDrawCard(deckType) {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    const teamState = state.teams[teamId];
+    if (!state.isDemo || !teamState) {
+      return state;
+    }
+    const type = deckType === "fund" ? "fund" : "chance";
+    const card = drawCardForTeam(type, teamState);
+    const task = createTaskFromCard(card, type, teamState);
+    const withTask = {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          currentTask: task,
+          waitUntil: null,
+          jailUntil: null,
+          status: TEAM_STATUS.TASK_ACTIVE,
+          oncePerTeamCardIds: markOncePerTeamCard(teamState, task),
+          activePopup: {
+            title: task.title,
+            body: task.popup || task.body,
+            kind: task.presentation,
+            stage: "intro",
+            cardId: task.cardId
+          }
+        }
+      }
+    };
+    return applyImmediateTaskEffect(withTask, teamId);
+  });
+}
+
+// Laat lopende timers (opdracht, wacht, cel) direct aflopen.
+export function demoSkipTimer() {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    const teamState = state.teams[teamId];
+    if (!state.isDemo || !teamState) {
+      return state;
+    }
+    const next = { ...teamState };
+    if (next.currentTask?.timerSeconds && next.currentTask.startedAt) {
+      next.currentTask = {
+        ...next.currentTask,
+        startedAt: now() - (next.currentTask.timerSeconds + 2) * 1000
+      };
+    }
+    if (next.waitUntil) {
+      next.waitUntil = now() - 1000;
+    }
+    if (next.jailUntil) {
+      next.jailUntil = now() - 1000;
+    }
+    return { ...state, teams: { ...state.teams, [teamId]: next } };
+  });
+}
+
+// Geef alle power-up-soorten in één keer.
+export function demoGivePowerUps() {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    const teamState = state.teams[teamId];
+    if (!state.isDemo || !teamState) {
+      return state;
+    }
+    const stamp = now();
+    const all = [
+      { type: "skip_task", label: "Opdracht overslaan", body: "Sla een opdracht over zonder straf. Daarna een bonusworp." },
+      { type: "skip_free", label: "Gratis skip", body: "Skip één opdracht zonder de 2-vakjes-straf." },
+      { type: "shield", label: "Hong Beschermt", body: "Blokkeert automatisch de eerstvolgende aanval van een ander team." },
+      { type: "jail_free", label: "Celvrij", body: "Direct uit de echte cel, zonder wachttijd en strafopdracht." },
+      { type: "uno_reverse", label: "Uno Reverse", body: "Wijs een ander team aan voor de wodka-Red Bull-opdracht." }
+    ];
+    const existing = new Set((teamState.savedPowerUps ?? []).map((powerUp) => powerUp.type));
+    const added = all
+      .filter((powerUp) => !existing.has(powerUp.type))
+      .map((powerUp, index) => ({
+        id: `demo-${powerUp.type}-${stamp + index}`,
+        cardId: `demo-${powerUp.type}`,
+        title: powerUp.label,
+        label: powerUp.label,
+        body: powerUp.body,
+        type: powerUp.type
+      }));
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          savedPowerUps: [...(teamState.savedPowerUps ?? []), ...added],
+          activePopup: {
+            title: "Power-ups ontvangen",
+            body: "Alle power-up-soorten staan nu in jullie paneel. Probeer ze uit!",
+            kind: "fund",
+            stage: "detail"
+          }
+        }
+      }
+    };
+  });
+}
+
+// Simuleer dat een ander team jullie raakt (schild blokkeert automatisch).
+export function demoIncomingAttack(kind) {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    const teamState = state.teams[teamId];
+    if (!state.isDemo || !teamState) {
+      return state;
+    }
+
+    const shield = getShieldPowerUp(teamState);
+    if (shield) {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            savedPowerUps: removeSavedPowerUp(teamState, shield.id),
+            activePopup: {
+              title: "Hong Beschermt",
+              body: "Een ander team probeerde jullie te raken, maar Hong Beschermt heeft de actie geblokkeerd. Deze bescherming is nu gebruikt.",
+              kind: "fund",
+              stage: "detail"
+            }
+          }
+        }
+      };
+    }
+
+    if (kind === "move") {
+      const cleared = {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: { ...teamState, currentTask: null, waitUntil: null }
+        }
+      };
+      return moveTeamByDelta(cleared, teamId, -2, {
+        viaEffect: true,
+        source: "attack",
+        popup: {
+          title: "Jullie zijn geraakt",
+          body: "Een ander team heeft jullie 2 vakjes achteruit gezet. Jullie oude opdracht vervalt en het nieuwe vakje wordt direct uitgevoerd.",
+          kind: "chance",
+          stage: "detail"
+        }
+      });
+    }
+
+    if (kind === "swap") {
+      const bots = Object.values(state.teams).filter((team) => team.id !== teamId);
+      const bot = bots[Math.floor(Math.random() * bots.length)];
+      if (!bot) {
+        return state;
+      }
+      const swappedAt = now();
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            position: bot.position,
+            positionReachedAt: swappedAt,
+            currentTask: null,
+            waitUntil: swappedAt + GAME_CONFIG.swapWaitSeconds * 1000,
+            status: TEAM_STATUS.WAITING_SWAP,
+            activePopup: {
+              title: "Jullie zijn gewisseld",
+              body: "Jullie zijn gewisseld door een ander team. Jullie huidige opdracht vervalt. Wacht 3 minuten voordat jullie opnieuw mogen gooien.",
+              kind: "swap",
+              stage: "detail"
+            }
+          },
+          [bot.id]: { ...bot, position: teamState.position, positionReachedAt: swappedAt }
+        }
+      };
+    }
+
+    if (kind === "jail") {
+      const jailed = sendTeamToJail(state, teamId);
+      return {
+        ...jailed,
+        teams: {
+          ...jailed.teams,
+          [teamId]: {
+            ...jailed.teams[teamId],
+            activePopup: {
+              title: "Jullie zijn geraakt",
+              body: "Jullie zijn naar de cel gestuurd.",
+              kind: "chance",
+              stage: "detail"
+            }
+          }
+        }
+      };
+    }
+
+    // standaard: wachttijd-aanval
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          currentTask: null,
+          waitUntil: now() + GAME_CONFIG.attackWaitSeconds * 1000,
+          status: TEAM_STATUS.WAITING_TIMER,
+          activePopup: {
+            title: "Jullie zijn geraakt",
+            body: "Een ander team heeft jullie uit de flow getrokken. Jullie huidige opdracht vervalt. Wacht 3 minuten voordat jullie opnieuw mogen gooien.",
+            kind: "chance",
+            stage: "detail"
+          }
+        }
+      }
+    };
+  });
+}
+
+// Nog maar 1 normale beurt over (test Gefinisht-flow).
+export function demoAlmostDone() {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    const teamState = state.teams[teamId];
+    if (!state.isDemo || !teamState) {
+      return state;
+    }
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: { ...teamState, normalTurnsUsed: maxTurnsForState(state) - 1 }
+      }
+    };
+  });
+}
+
+// Alle tegenstanders gefinisht (test eindstand + winnaarbepaling).
+export function demoFinishOpponents() {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    if (!state.isDemo) {
+      return state;
+    }
+    const teams = { ...state.teams };
+    for (const [id, team] of Object.entries(teams)) {
+      if (id !== teamId) {
+        teams[id] = {
+          ...team,
+          normalTurnsUsed: maxTurnsForState(state),
+          currentTask: null,
+          pendingTasks: [],
+          waitUntil: null,
+          jailUntil: null,
+          pendingBonusRoll: false,
+          status: TEAM_STATUS.FINISHED,
+          finishedAt: team.finishedAt ?? now()
+        };
+      }
+    }
+    return { ...state, teams };
+  });
 }
 
 window.addEventListener("storage", (event) => {
