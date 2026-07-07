@@ -135,6 +135,72 @@ function playTransitionFeedback(state, teamState) {
 
 let lastCountdownValue = null;
 
+// Stap-voor-stap pion-animatie. De store verplaatst de pion direct naar de
+// eindpositie; de UI laat 'm zichtbaar vak voor vak lopen via lastMove.steps.
+const WALK_STEP_MS = 150;
+let walk = { active: false, cells: [], index: 0, timer: null, movedAt: 0 };
+let walkInited = false;
+
+function boardWrap(n) {
+  const size = GAME_CONFIG.boardSize;
+  return ((((n - 1) % size) + size) % size) + 1;
+}
+
+function maybeStartWalk(state, teamState) {
+  const move = teamState.lastMove;
+  // Eerste keer in het spel: zet de basislijn op de al bestaande worp (bij
+  // hervatten midden in het spel), zodat die niet wordt nagespeeld.
+  if (!walkInited) {
+    walkInited = true;
+    walk.movedAt = move?.movedAt ?? 0;
+    return false;
+  }
+  if (!move || !Number.isFinite(move.steps) || move.steps === 0) {
+    return false;
+  }
+  if (walk.active || move.movedAt <= walk.movedAt) {
+    return false;
+  }
+
+  walk.movedAt = move.movedAt;
+  const dir = Math.sign(move.steps);
+  const count = Math.abs(move.steps);
+  const cells = [move.from];
+  let pos = move.from;
+  for (let i = 0; i < count; i += 1) {
+    pos = boardWrap(pos + dir);
+    cells.push(pos);
+  }
+  walk = { ...walk, active: true, cells, index: 0 };
+  window.clearInterval(walk.timer);
+  walk.timer = window.setInterval(advanceWalk, WALK_STEP_MS);
+  return true;
+}
+
+function advanceWalk() {
+  walk.index += 1;
+  if (walk.index >= walk.cells.length) {
+    window.clearInterval(walk.timer);
+    walk.timer = null;
+    walk.active = false;
+    render();
+    return;
+  }
+
+  const tileId = walk.cells[walk.index];
+  const oldCell = app.querySelector(".board-cell.is-here");
+  const newCell = app.querySelector(`.board-cell[data-tile-id="${tileId}"]`);
+  if (oldCell && newCell) {
+    oldCell.classList.remove("is-here");
+    oldCell.querySelector(".board-pawn")?.remove();
+    newCell.classList.add("is-here");
+    const pawn = document.createElement("span");
+    pawn.className = "board-pawn";
+    newCell.appendChild(pawn);
+  }
+  feedback.step();
+}
+
 function render() {
   // Niet midden in de dobbelsteenanimatie opnieuw renderen.
   if (document.querySelector(".dice-panel.is-rolling")) {
@@ -184,6 +250,7 @@ function render() {
     return;
   }
 
+  maybeStartWalk(state, teamState);
   renderGame(state, teamState);
 }
 
@@ -525,7 +592,9 @@ function renderCountdown(state, teamState) {
 function renderGame(state, teamState) {
   const mode = findGameMode(state.modeId);
   const color = findTeamColor(teamState.colorId);
-  const tile = findTileById(teamState.position);
+  const walking = walk.active;
+  // Tijdens het lopen staat de pion op het huidige loopvak; anders op de eindpositie.
+  const pawnPosition = walking ? walk.cells[walk.index] ?? teamState.lastMove?.from ?? teamState.position : teamState.position;
 
   app.innerHTML = `
     <div class="screen screen-game" style="--team-accent:${color.hex}">
@@ -544,22 +613,30 @@ function renderGame(state, teamState) {
         </div>
       </header>
 
-      <section class="panel tile-panel">
-        <span class="field-label">Huidig vak</span>
-        <strong class="tile-name">${esc(tile?.name ?? "-")}</strong>
-        <span class="tile-type">${esc(tile?.type ?? "")}</span>
-      </section>
+      ${renderBoard(state, teamState, pawnPosition)}
 
-      ${renderActionArea(state, teamState)}
-      ${renderPowerUps(state, teamState)}
-      ${state.isDemo ? renderDemoPanel(state, teamState) : ""}
-      ${renderBoard(state, teamState)}
+      ${walking ? renderWalkingPanel(teamState) : `
+        ${renderActionArea(state, teamState)}
+        ${renderPowerUps(state, teamState)}
+        ${state.isDemo ? renderDemoPanel(state, teamState) : ""}
+      `}
       ${renderEventLog(state)}
 
       <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
-      ${renderPopup(state, teamState)}
-      ${renderDialog(state, teamState)}
+      ${walking ? "" : renderPopup(state, teamState)}
+      ${walking ? "" : renderDialog(state, teamState)}
     </div>
+  `;
+}
+
+function renderWalkingPanel(teamState) {
+  const move = teamState.lastMove;
+  const dir = (move?.steps ?? 0) < 0 ? "achteruit" : "vooruit";
+  return `
+    <section class="panel action-panel walking-panel">
+      <span class="field-label">Onderweg</span>
+      <p class="walking-text">De pion loopt ${Math.abs(move?.steps ?? 0)} ${Math.abs(move?.steps ?? 0) === 1 ? "vakje" : "vakjes"} ${dir}…</p>
+    </section>
   `;
 }
 
@@ -898,21 +975,22 @@ function renderDemoPanel(state, teamState) {
 /* Bord (alleen eigen pion zichtbaar)                                  */
 /* ------------------------------------------------------------------ */
 
-function renderBoard(state, teamState) {
+function renderBoard(state, teamState, pawnPosition = teamState.position) {
   const cells = getBoardCells();
+  const tile = findTileById(pawnPosition);
+  const centerLabel = walk.active ? "Onderweg…" : esc(tile?.name ?? `Vak ${pawnPosition}`);
   return `
     <section class="panel board-panel">
-      <h2>Het bord</h2>
       <div class="board-grid">
         ${cells.map((cell) => {
           if (!cell.tileId) {
             return '<div class="board-cell board-cell-empty"></div>';
           }
-          const tile = findTileById(cell.tileId);
-          const theme = getTileTheme(tile);
-          const isHere = cell.tileId === teamState.position;
+          const cellTile = findTileById(cell.tileId);
+          const theme = getTileTheme(cellTile);
+          const isHere = cell.tileId === pawnPosition;
           return `
-            <div class="board-cell ${theme.className} ${isHere ? "is-here" : ""}" style="--tile-color:${theme.color}" title="${esc(tile.name)}">
+            <div class="board-cell ${theme.className} ${isHere ? "is-here" : ""}" data-tile-id="${cell.tileId}" style="--tile-color:${theme.color}" title="${esc(cellTile.name)}">
               <span class="board-cell-label">${esc(theme.label)}</span>
               ${isHere ? '<span class="board-pawn"></span>' : ""}
             </div>
@@ -920,7 +998,7 @@ function renderBoard(state, teamState) {
         }).join("")}
         <div class="board-center">
           <img src="./assets/zuipopoly-board-logo.svg" alt="" />
-          <span>Niet zomaar een kroegentocht.</span>
+          <span class="board-center-pos">${centerLabel}</span>
         </div>
       </div>
     </section>

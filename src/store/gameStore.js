@@ -1130,6 +1130,7 @@ function moveTeamByDelta(state, teamId, delta, options = {}) {
   const { position, roundsGained } = normalizeBoardPosition(rawPosition);
   return applyMovement(state, teamId, position, roundsGained, {
     ...options,
+    steps: options.steps ?? delta,
     source: options.source ?? "card"
   });
 }
@@ -1158,7 +1159,10 @@ function applyMovement(state, teamId, position, roundsGained, options = {}) {
       crossedStart,
       tileName: tile.name,
       movedAt,
-      source: options.source ?? "move"
+      source: options.source ?? "move",
+      // Aantal stappen dat de pion loopt (positief = vooruit, negatief = achteruit).
+      // null bij teleport/wissel: dan springt de pion direct.
+      steps: options.steps ?? null
     }
   };
 
@@ -1299,6 +1303,7 @@ export function rollDice(teamId, forcedRoll = null) {
     const { position, roundsGained } = normalizeBoardPosition(rawPosition);
     return applyMovement(rolledState, teamId, position, roundsGained, {
       roll,
+      steps: roll,
       source: isBonusRoll ? "bonus_roll" : "roll",
       viaEffect: false
     });
