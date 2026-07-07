@@ -1084,39 +1084,35 @@ p {
   text-shadow: 0 0 18px var(--team-accent);
 }
 
-.pip {
+/* Pips schalen mee met de dobbelsteen (percentages i.p.v. vaste pixels) en
+   staan in het juiste 3x3-dobbelpatroon. top/left = midden van de pip. */
+.pip,
+.die::after {
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 15.5%;
+  height: 15.5%;
   border-radius: 50%;
-  background: var(--black);
+  background: radial-gradient(circle at 35% 30%, #3a3a42, var(--black) 68%);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.22),
-    0 1px 1px rgba(0, 0, 0, 0.32);
+    inset 0 1px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.5),
+    0 1px 1px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
   opacity: 0;
 }
 
 .die::after {
   content: "";
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--black);
-  top: 41px;
-  left: 41px;
-  box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, 0.22),
-    0 1px 1px rgba(0, 0, 0, 0.32);
-  opacity: 0;
+  top: 50%;
+  left: 50%;
 }
 
-.pip-1 { top: 18px; left: 18px; }
-.pip-2 { top: 18px; right: 18px; }
-.pip-3 { top: 41px; left: 18px; }
-.pip-4 { top: 41px; right: 18px; }
-.pip-5 { bottom: 18px; left: 18px; }
-.pip-6 { bottom: 18px; right: 18px; }
+.pip-1 { top: 27%; left: 27%; }
+.pip-2 { top: 27%; left: 73%; }
+.pip-3 { top: 50%; left: 27%; }
+.pip-4 { top: 50%; left: 73%; }
+.pip-5 { top: 73%; left: 27%; }
+.pip-6 { top: 73%; left: 73%; }
 
 .die-1::after { opacity: 1; }
 
