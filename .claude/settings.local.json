@@ -11,7 +11,20 @@
       "Bash(Select-Object FullName)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -q -m 'Baseline: bestaande Zuip-O-Poly MVP vóór self-running rebuild *)"
+      "Bash(git commit -q -m 'Baseline: bestaande Zuip-O-Poly MVP vóór self-running rebuild *)",
+      "Bash(git rm *)",
+      "Bash(git commit -q -m 'Fase 1: data-laag self-running gemaakt *)",
+      "Bash(node --check src/store/gameStore.js)",
+      "Bash(node --check src/main.js)",
+      "Bash(node --check src/data/cards.js)",
+      "Bash(node --check src/data/gameConfig.js)",
+      "Bash(node --check src/data/statuses.js)",
+      "PowerShell(node --version)",
+      "PowerShell(py --version)",
+      "PowerShell(py -c \"print\\('ok'\\)\")",
+      "PowerShell(foreach \\($cmd in @\\(\"deno\",\"bun\",\"npx\",\"php\",\"dotnet\",\"python3\"\\)\\) { $c = Get-Command $cmd -ErrorAction SilentlyContinue; if \\($c\\) { Write-Output \"$cmd -> $\\($c.Source\\)\" } else { Write-Output \"$cmd -> NIET GEVONDEN\" } })",
+      "Bash(git commit -q -m 'Fase 2: self-running spelkern met dynamische spelkamers *)",
+      "Bash(git commit -q -m 'Fase 3: huisstijl-overhaul \\(design tokens, Bebas Neue/Inter/JetBrains Mono\\) *)"
     ]
   }
 }
