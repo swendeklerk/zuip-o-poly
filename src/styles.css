@@ -277,6 +277,73 @@ p {
   gap: 10px;
 }
 
+.icon-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.icon-button:active {
+  transform: scale(0.94);
+}
+
+.game-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-toggle .toggle-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface3);
+  color: var(--text-muted);
+}
+
+.settings-toggle.is-on {
+  border-color: rgba(0, 212, 100, 0.4);
+}
+
+.settings-toggle.is-on .toggle-pill {
+  background: rgba(0, 212, 100, 0.16);
+  color: var(--success);
+}
+
 .home-actions {
   display: flex;
   flex-direction: column;

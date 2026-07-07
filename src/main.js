@@ -11,6 +11,7 @@ import {
   TEAM_RULES
 } from "./data/gameConfig.js";
 import { GAME_PHASE, STATUS_META, TEAM_STATUS } from "./data/statuses.js";
+import { feedback, getFeedbackSettings, setFeedbackSetting } from "./services/feedback.js";
 import {
   chooseTeam,
   clearSession,
@@ -100,6 +101,40 @@ function fmtTime(totalSeconds) {
 
 let renderQueued = false;
 
+// Speelt geluid/trilling af bij belangrijke overgangen (geraakt, cel, power-up,
+// winst). Vuurt alleen op de overgang zelf, niet elke render.
+let sfxPrev = { inited: false, phase: null, status: null, popupSig: null, powerupCount: 0 };
+
+function playTransitionFeedback(state, teamState) {
+  const phase = state.phase;
+  const status = teamState.status;
+  const popup = teamState.activePopup;
+  const popupSig = popup ? `${popup.title}|${popup.stage}` : null;
+  const powerupCount = (teamState.savedPowerUps ?? []).length;
+
+  if (sfxPrev.inited) {
+    if (phase === GAME_PHASE.ENDED && sfxPrev.phase !== GAME_PHASE.ENDED) {
+      feedback.win();
+    }
+    if (status === TEAM_STATUS.IN_JAIL && sfxPrev.status !== TEAM_STATUS.IN_JAIL) {
+      feedback.jail();
+    }
+    if (powerupCount > sfxPrev.powerupCount) {
+      feedback.powerup();
+    }
+    if (popupSig && popupSig !== sfxPrev.popupSig && popup.stage === "detail") {
+      const title = (popup.title ?? "").toLowerCase();
+      if (title.includes("geraakt") || title.includes("gewisseld") || title.includes("uno reverse")) {
+        feedback.hit();
+      }
+    }
+  }
+
+  sfxPrev = { inited: true, phase, status, popupSig, powerupCount };
+}
+
+let lastCountdownValue = null;
+
 function render() {
   // Niet midden in de dobbelsteenanimatie opnieuw renderen.
   if (document.querySelector(".dice-panel.is-rolling")) {
@@ -126,6 +161,8 @@ function render() {
     renderEntry("Je team bestaat niet (meer) in deze spelkamer.");
     return;
   }
+
+  playTransitionFeedback(state, teamState);
 
   if (!isSessionActive(state, session)) {
     renderTakeover(state, session, teamState);
@@ -250,7 +287,9 @@ function renderEntry(notice = "") {
           ${TEAM_RULES.map((rule) => `<li>${esc(rule)}</li>`).join("")}
         </ul>
       </section>
+      <button class="button link" data-action="open-settings">🔊 Geluid &amp; trilling</button>
       <p class="home-city">Speelstad: <strong>Nijmegen</strong></p>
+      ${renderDialog(null, null)}
     </div>
   `;
 }
@@ -493,7 +532,10 @@ function renderGame(state, teamState) {
       <header class="game-header">
         <div class="game-header-top">
           ${teamChip(teamState)}
-          ${syncBadge(state)}
+          <div class="game-header-tools">
+            ${syncBadge(state)}
+            <button class="icon-button" data-action="open-settings" aria-label="Instellingen">⚙</button>
+          </div>
         </div>
         <div class="game-header-bottom">
           ${statusPill(teamState)}
@@ -999,6 +1041,29 @@ function renderDialog(state, teamState) {
     `;
   }
 
+  if (ui.dialog.type === "settings") {
+    const fb = getFeedbackSettings();
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card popup-task">
+          <span class="popup-kind">Instellingen</span>
+          <h2>Geluid &amp; trilling</h2>
+          <div class="settings-list">
+            <button class="settings-toggle ${fb.sound ? "is-on" : ""}" data-action="toggle-sound">
+              <span>🔊 Geluid</span>
+              <span class="toggle-pill">${fb.sound ? "AAN" : "UIT"}</span>
+            </button>
+            <button class="settings-toggle ${fb.vibration ? "is-on" : ""}" data-action="toggle-vibration">
+              <span>📳 Trillen</span>
+              <span class="toggle-pill">${fb.vibration ? "AAN" : "UIT"}</span>
+            </button>
+          </div>
+          <button class="button primary big" data-action="dialog-cancel">Klaar</button>
+        </div>
+      </div>
+    `;
+  }
+
   if (ui.dialog.type === "leave") {
     return `
       <div class="popup-overlay">
@@ -1177,9 +1242,11 @@ app.addEventListener("click", (event) => {
       rollDice(session.teamId);
       break;
     case "confirm-task":
+      feedback.confirm();
       confirmTask(session.teamId);
       break;
     case "confirm-task-bonus":
+      feedback.confirm();
       confirmTask(session.teamId, { withBonus: true });
       break;
     case "ask-skip":
@@ -1209,6 +1276,21 @@ app.addEventListener("click", (event) => {
       ui.dialog = null;
       render();
       break;
+    case "open-settings":
+      ui.dialog = { type: "settings" };
+      render();
+      break;
+    case "toggle-sound":
+      setFeedbackSetting("sound", !getFeedbackSettings().sound);
+      render();
+      break;
+    case "toggle-vibration": {
+      const next = !getFeedbackSettings().vibration;
+      setFeedbackSetting("vibration", next);
+      if (next) feedback.tap();
+      render();
+      break;
+    }
     case "ask-leave":
       ui.dialog = { type: "leave" };
       render();
@@ -1219,6 +1301,7 @@ app.addEventListener("click", (event) => {
       clearSession();
       break;
     case "use-powerup":
+      feedback.powerup();
       usePowerUp(session.teamId, target.dataset.powerupId);
       break;
     case "dock17-reveal":
@@ -1230,9 +1313,12 @@ app.addEventListener("click", (event) => {
     case "dismiss-popup":
       dismissPopup(session.teamId);
       break;
-    case "reveal-popup":
+    case "reveal-popup": {
+      const kind = getState()?.teams?.[session.teamId]?.activePopup?.kind;
+      feedback.cardFlip(kind === "fund" ? "fund" : "chance");
       revealPopupCard(session.teamId);
       break;
+    }
     case "start-demo":
     case "demo-restart":
       startDemoGame();
@@ -1372,9 +1458,14 @@ function updateVisibleTimers() {
     const remaining = getCountdownRemaining(state);
     if (el && remaining != null) {
       el.textContent = remaining;
+      if (remaining !== lastCountdownValue) {
+        lastCountdownValue = remaining;
+        feedback.countdownTick(remaining <= 1);
+      }
     }
     return;
   }
+  lastCountdownValue = null;
 
   const teamState = state?.teams?.[session?.teamId];
   if (!teamState) {

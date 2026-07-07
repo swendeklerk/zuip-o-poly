@@ -43,14 +43,18 @@ document.addEventListener(
     panel.classList.add("is-rolling");
     die.classList.add("is-rolling");
 
+    window.zuipFeedback?.diceStart();
+    window.zuipFeedback?.diceRattle();
     const interval = window.setInterval(() => {
       setDieFace(die, randomFace());
+      window.zuipFeedback?.diceRattle();
     }, tickMs);
 
     window.setTimeout(() => {
       window.clearInterval(interval);
       panel.classList.remove("is-rolling");
       die.classList.remove("is-rolling");
+      window.zuipFeedback?.diceLand();
 
       const currentButton = document.querySelector(
         `[data-action="roll-dice"][data-team-id="${teamId}"]`
