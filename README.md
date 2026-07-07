@@ -4,23 +4,22 @@ Self-running mobiele webapp voor Zuip-O-Poly Nijmegen: een interactieve kroegent
 
 ## Lokaal starten
 
-Op deze machine is geen Python of Node beschikbaar, dus gebruik de meegeleverde PowerShell dev-server:
+Het makkelijkst: dubbelklik op `START_TESTOMGEVING.bat`. Dat opent de browser en
+start de meegeleverde PowerShell dev-server. Handmatig kan ook:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev-server.ps1 -Port 5173
 ```
 
-Heb je wel Python? Dan werkt ook:
+Heb je Python? Dan werkt ook `python -m http.server 5173`. Open daarna
+`http://127.0.0.1:5173`.
 
-```powershell
-python -m http.server 5173
-```
-
-Open daarna:
-
-```text
-http://127.0.0.1:5173
-```
+- **Meerdere teams testen:** open de app in aparte browser- of incognitovensters
+  (één venster = één team).
+- **Opnieuw beginnen:** `http://127.0.0.1:5173/?reset=1` of "Spelkamer verlaten".
+- **Alles los uitproberen:** de knop **Testmodus** op het startscherm zet je
+  direct in een lopend spel met een testpaneel (teleporteren, kaarten trekken,
+  aanvallen simuleren, timers overslaan).
 
 ## Build / hosting
 
@@ -38,7 +37,7 @@ Voor lokale Supabase-config vul je `config.js` in (zie `config.example.js`). Geb
 
 1. Een speler maakt een spelkamer aan: kiest teamnaam, teamkleur en een spelstand (Gezellig 15 / Fanatiek 20 / Legendarisch 25 worpen). Deze speler is de **spelstarter** en speelt daarna gewoon mee — geen admin-rol.
 2. Andere teams joinen met de gedeelde spelcode, kiezen zelf een teamnaam en teamkleur.
-3. Zodra minimaal 2 teams klaarstaan, start de spelstarter het spel. Countdown, daarna start iedereen op vak 1.
+3. De spelstarter start het spel zodra alle teams klaarstaan (solo starten mag ook, om te testen). Countdown, daarna start iedereen op vak 1.
 4. Ieder team gooit, wordt automatisch verplaatst, voert de opdracht/kaart/actie van het vak uit en bevestigt zelf ("Gedaan, wij zweren het") of skipt (altijd −2 vakjes).
 5. Teams kunnen elkaar dwarszitten via Kans, Algemeen Fonds, Wisselstation en power-ups. De app verwerkt dit direct en toont meldingen aan beide teams.
 6. Na het ingestelde aantal beurten is een team "Gefinisht". Zodra alle teams klaar zijn, bepaalt de app automatisch de eindstand (rondes → positie → tijdstip).
