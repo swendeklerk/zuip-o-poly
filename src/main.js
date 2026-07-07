@@ -826,7 +826,7 @@ function renderEventLog(state) {
 
 function renderPopup(state, teamState) {
   const popup = teamState.activePopup;
-  if (!popup) {
+  if (!popup || ui.dialog) {
     return "";
   }
 
@@ -864,6 +864,8 @@ function popupKindLabel(kind) {
     swap: "Wisselstation",
     start: "Ronde-bonus",
     task: "Opdracht",
+    snack: "Snackstation",
+    parking: "Vrij Parkeren",
     jail: "Cel",
     finished: "Einde",
     info: "Melding"
