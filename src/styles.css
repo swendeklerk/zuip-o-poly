@@ -875,23 +875,36 @@ p {
   }
 }
 
-/* Groot, vaag icoon-watermerk in de hoek. */
+/* Bierviltje als hoek-embleem. */
 .task-emblem {
   position: absolute;
-  top: -14px;
-  right: -6px;
-  font-size: 5.5rem;
-  line-height: 1;
-  opacity: 0.12;
-  filter: grayscale(0.2);
+  top: 8px;
+  right: 8px;
+  width: 66px;
+  opacity: 0.9;
   transform: rotate(8deg);
   pointer-events: none;
   animation: emblemFloat 5s ease-in-out infinite;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4));
 }
 
 @keyframes emblemFloat {
   0%, 100% { transform: rotate(8deg) translateY(0); }
-  50% { transform: rotate(6deg) translateY(-5px); }
+  50% { transform: rotate(6deg) translateY(-4px); }
+}
+
+.coaster {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.coaster-lg { width: 66px; }
+
+.coaster-sm {
+  width: 16px;
+  display: inline-block;
+  vertical-align: middle;
 }
 
 .task-head {
@@ -904,6 +917,9 @@ p {
 
 .task-tag {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.12em;

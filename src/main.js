@@ -837,22 +837,51 @@ function renderDicePanel(state, teamState) {
   `;
 }
 
-// Kleur + icoon + label per vaktype, zodat je meteen ziet wat voor vak het is.
+// Kleur + bierviltje-icoon + label per vaktype.
 const TASK_THEMES = {
-  Straatvak: { tag: "Kroeg", icon: "🍺", accent: "#ffb02e" },
-  Snackstation: { tag: "Snackstation", icon: "🍟", accent: "#ff7a00" },
-  "Vast strafvak": { tag: "Strafvak", icon: "⚠️", accent: "#e8001d" },
-  "Vast speciaal vak": { tag: "Speciaal vak", icon: "⚡", accent: "#00d4ff" },
-  "Parkeeropdracht / chillvak": { tag: "Vrij Parkeren", icon: "🅿️", accent: "#00d464" },
-  Celstraf: { tag: "Celstraf", icon: "🔒", accent: "#e8001d" },
-  "Cel Bezoekvak": { tag: "Op bezoek", icon: "📸", accent: "#ffd600" }
+  Straatvak: { tag: "Kroeg", key: "beer", accent: "#ffb02e" },
+  Snackstation: { tag: "Snackstation", key: "snack", accent: "#ff7a00" },
+  "Vast strafvak": { tag: "Strafvak", key: "warning", accent: "#e8001d" },
+  "Vast speciaal vak": { tag: "Speciaal vak", key: "bolt", accent: "#00d4ff" },
+  "Parkeeropdracht / chillvak": { tag: "Vrij Parkeren", key: "park", accent: "#00d464" },
+  Celstraf: { tag: "Celstraf", key: "lock", accent: "#e8001d" },
+  "Cel Bezoekvak": { tag: "Op bezoek", key: "camera", accent: "#ffd600" }
 };
 
 function getTaskTheme(task, teamState) {
-  if (task.presentation === "chance") return { tag: "Kans", icon: "🎲", accent: "#ff2d44" };
-  if (task.presentation === "fund") return { tag: "Algemeen Fonds", icon: "💰", accent: "#c800ff" };
+  if (task.presentation === "chance") return { tag: "Kans", key: "dice", accent: "#ff2d44" };
+  if (task.presentation === "fund") return { tag: "Algemeen Fonds", key: "coin", accent: "#c800ff" };
   const type = findTileById(teamState?.position)?.type ?? "";
-  return TASK_THEMES[type] ?? { tag: "Opdracht", icon: "🎯", accent: "var(--team-accent)" };
+  return TASK_THEMES[type] ?? { tag: "Opdracht", key: "target", accent: "var(--team-accent)" };
+}
+
+// Symbool binnen het viltje per type (donker glyph op accent-tint).
+function coasterGlyph(key) {
+  const glyphs = {
+    beer: '<path d="M25 24h11v18a4 4 0 0 1-4 4h-3a4 4 0 0 1-4-4V24z"/><path d="M36 28h4a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3h-4"/><path d="M25 24c0-4 11-4 11 0" stroke-width="3" fill="none"/>',
+    snack: '<path d="M23 30h18l-2 16a2 2 0 0 1-2 2H27a2 2 0 0 1-2-2l-2-16z"/><path d="M27 30l1-8M32 30v-9M37 30l-1-8" stroke-width="2.4" fill="none"/>',
+    warning: '<path d="M32 20l14 24H18z"/><rect x="30.5" y="30" width="3" height="8" rx="1.5" fill="#080809"/><circle cx="32" cy="41" r="1.8" fill="#080809"/>',
+    bolt: '<path d="M35 18L22 37h8l-3 11 14-21h-9l3-9z"/>',
+    park: '<path d="M26 20h9a8 8 0 0 1 0 16h-4v10h-5V20zm5 6v6h4a3 3 0 0 0 0-6h-4z"/>',
+    lock: '<rect x="23" y="31" width="18" height="15" rx="2.5"/><path d="M27 31v-4a5 5 0 0 1 10 0v4" fill="none" stroke-width="3.2"/>',
+    camera: '<rect x="20" y="26" width="24" height="17" rx="3"/><circle cx="32" cy="34.5" r="5" fill="#080809"/><rect x="27" y="22" width="10" height="5" rx="2"/>',
+    dice: '<rect x="22" y="22" width="20" height="20" rx="4"/><circle cx="28" cy="28" r="2" fill="#080809"/><circle cx="36" cy="28" r="2" fill="#080809"/><circle cx="32" cy="32" r="2" fill="#080809"/><circle cx="28" cy="36" r="2" fill="#080809"/><circle cx="36" cy="36" r="2" fill="#080809"/>',
+    coin: '<circle cx="32" cy="32" r="12"/><path d="M36 27c-5-3-9 0-9 5s4 8 9 5" fill="none" stroke="#080809" stroke-width="2.6"/><path d="M25 31h9M25 35h9" stroke="#080809" stroke-width="2.2"/>',
+    target: '<circle cx="32" cy="32" r="12" fill="none" stroke-width="3.2"/><circle cx="32" cy="32" r="5"/>'
+  };
+  return glyphs[key] ?? glyphs.target;
+}
+
+// Rond bierviltje met dubbele ring en symbool.
+function coasterIcon(key, accent, className = "coaster") {
+  return `
+    <svg viewBox="0 0 64 64" class="${className}" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="30" fill="#111116" stroke="${accent}" stroke-width="2.5" />
+      <circle cx="32" cy="32" r="30" fill="${accent}" fill-opacity="0.18" />
+      <circle cx="32" cy="32" r="25" fill="none" stroke="${accent}" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.7" />
+      <g fill="${accent}" stroke="${accent}" stroke-linejoin="round" stroke-linecap="round">${coasterGlyph(key)}</g>
+    </svg>
+  `;
 }
 
 function renderTaskPanel(state, teamState) {
@@ -895,9 +924,9 @@ function renderTaskPanel(state, teamState) {
 
   return `
     <section class="panel action-panel task-panel task-themed" style="--task-accent:${theme.accent}">
-      <div class="task-emblem" aria-hidden="true">${theme.icon}</div>
+      <div class="task-emblem" aria-hidden="true">${coasterIcon(theme.key, theme.accent, "coaster coaster-lg")}</div>
       <div class="task-head">
-        <span class="task-tag">${theme.icon} ${esc(theme.tag)}</span>
+        <span class="task-tag">${coasterIcon(theme.key, theme.accent, "coaster coaster-sm")} ${esc(theme.tag)}</span>
         <h2 class="task-title">${esc(task.title)}</h2>
       </div>
       <div class="task-body">${nl2br(task.body)}</div>
