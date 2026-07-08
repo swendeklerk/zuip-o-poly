@@ -257,6 +257,27 @@ p {
   color: var(--text);
 }
 
+.home-tagline {
+  text-align: center;
+  font-size: 1.5rem;
+  color: var(--red-bright);
+  transform: rotate(-2deg);
+  margin-top: -2px;
+  text-shadow: 0 0 16px rgba(232, 0, 29, 0.35);
+}
+
+/* Rauwe accenten in de lobby-spelcode. */
+.room-panel {
+  position: relative;
+  overflow: visible;
+}
+
+.room-hint {
+  font-size: 1.15rem;
+  color: var(--gold);
+  transform: rotate(-1.5deg);
+}
+
 /* ------------------------------------------------------------------
    Panelen
    ------------------------------------------------------------------ */
@@ -1675,6 +1696,8 @@ p {
 /* ---- Sfeer-intro bij aankomst op een vak ---- */
 
 .sfeer-card {
+  position: relative;
+  overflow: visible;
   border-top: 5px solid var(--team-accent);
   text-align: center;
   align-items: center;

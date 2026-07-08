@@ -478,6 +478,7 @@ function renderEntry(notice = "") {
   app.innerHTML = `
     <div class="screen screen-home">
       ${brandHeader()}
+      <p class="home-tagline hand">De kroegentocht die terugvecht.</p>
       ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
       <div class="home-actions">
         <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
@@ -655,6 +656,8 @@ function renderLobby(state, teamState) {
       ${brandHeader("Speelstad: Nijmegen")}
 
       <section class="panel room-panel">
+        <span class="tape tape-tr"></span>
+        <p class="room-hint hand">Deel deze code met je maten 👇</p>
         <div class="room-code-row">
           <div>
             <span class="field-label">Spelcode</span>
@@ -1289,6 +1292,7 @@ function renderPopup(state, teamState) {
     return `
       <div class="popup-overlay">
         <div class="popup-card sfeer-card ${kindClass}">
+          <span class="tape tape-tl"></span>
           <span class="popup-kind">${esc(sfeerEyebrow(popup, teamState))}</span>
           <h2 class="sfeer-name">${esc(popup.title)}</h2>
           ${popup.body ? `<div class="popup-body sfeer-body">${nl2br(popup.body)}</div>` : ""}
