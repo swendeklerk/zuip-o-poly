@@ -189,38 +189,31 @@ function polarPoint(cx, cy, r, deg) {
   return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
 }
 
-// Statische SVG van het rad: één taartpunt per drankje, label radiaal.
+// Statische SVG van het rad: één gekleurd taartpunt per drankje (zonder tekst).
 function wheelSvg() {
-  const options = CAFE_VAN_OUDS_WHEEL_OPTIONS;
-  const n = options.length;
+  const n = CAFE_VAN_OUDS_WHEEL_OPTIONS.length;
   const seg = 360 / n;
   const cx = 100;
   const cy = 100;
   const r = 96;
-  const slices = options
-    .map((label, i) => {
+  const slices = CAFE_VAN_OUDS_WHEEL_OPTIONS
+    .map((_, i) => {
       const start = i * seg;
       const end = (i + 1) * seg;
       const [x1, y1] = polarPoint(cx, cy, r, start);
       const [x2, y2] = polarPoint(cx, cy, r, end);
       const color = WHEEL_COLORS[i % WHEEL_COLORS.length];
       const path = `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
-      const mid = start + seg / 2;
-      const [tx, ty] = polarPoint(cx, cy, r * 0.62, mid);
-      const short = label.length > 12 ? `${label.slice(0, 11)}…` : label;
       const winner = wheelSpin.lastIndex === i;
-      return `
-        <path d="${path}" fill="${color}" fill-opacity="${winner ? 1 : 0.82}" stroke="#080809" stroke-width="1.2" />
-        <text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" transform="rotate(${mid} ${tx.toFixed(1)} ${ty.toFixed(1)})"
-          font-size="7" font-family="Inter, sans-serif" font-weight="700" fill="#080809"
-          text-anchor="middle" dominant-baseline="middle">${esc(short)}</text>
-      `;
+      return `<path d="${path}" fill="${color}" fill-opacity="${winner ? 1 : 0.85}" stroke="#080809" stroke-width="1.4" />`;
     })
     .join("");
   return `
     <svg viewBox="0 0 200 200" class="wheel-svg" xmlns="http://www.w3.org/2000/svg">
       ${slices}
-      <circle cx="${cx}" cy="${cy}" r="14" fill="#111116" stroke="#f0eef4" stroke-width="2" />
+      <circle cx="${cx}" cy="${cy}" r="90" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2.5" />
+      <circle cx="${cx}" cy="${cy}" r="15" fill="#111116" stroke="#f0eef4" stroke-width="2.5" />
+      <circle cx="${cx}" cy="${cy}" r="5" fill="#f0eef4" />
     </svg>
   `;
 }
@@ -1665,6 +1658,9 @@ app.addEventListener("click", (event) => {
         break;
       }
       const choiceId = target.dataset.choiceId;
+      // Blokkeer de her-render die de store-update zou triggeren (voorkomt de
+      // zwarte flits). Het rad-element blijft staan en gaat direct draaien.
+      wheelSpin.active = true;
       spinVanOudsWheel(session.teamId, choiceId);
       const spunChoice = getState()?.teams?.[session.teamId]?.currentTask?.vanOudsChoices?.find(
         (choice) => choice.id === choiceId

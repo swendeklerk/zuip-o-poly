@@ -1,5 +1,4 @@
-const rollDurationMs = 900;
-const tickMs = 70;
+const rollDurationMs = 1100;
 let activeRollTeamId = null;
 
 function randomFace() {
@@ -45,13 +44,25 @@ document.addEventListener(
 
     window.zuipFeedback?.diceStart();
     window.zuipFeedback?.diceRattle();
-    const interval = window.setInterval(() => {
+
+    // Face-swaps versnellen aan het begin en vertragen naar het einde, zodat
+    // de steen 'uittolt' in plaats van mechanisch te knipperen.
+    let elapsed = 0;
+    let faceTimer = null;
+    const tick = () => {
       setDieFace(die, randomFace());
       window.zuipFeedback?.diceRattle();
-    }, tickMs);
+      const progress = Math.min(elapsed / rollDurationMs, 1);
+      const delay = 40 + progress * progress * 150;
+      elapsed += delay;
+      if (elapsed < rollDurationMs - 80) {
+        faceTimer = window.setTimeout(tick, delay);
+      }
+    };
+    tick();
 
     window.setTimeout(() => {
-      window.clearInterval(interval);
+      window.clearTimeout(faceTimer);
       panel.classList.remove("is-rolling");
       die.classList.remove("is-rolling");
       window.zuipFeedback?.diceLand();
