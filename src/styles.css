@@ -1958,19 +1958,89 @@ body.hit-flash::after {
    Eindstand
    ------------------------------------------------------------------ */
 
-.winner-panel {
-  align-items: center;
+/* Kroeg-oorkonde voor de winnaar. */
+.certificate {
+  position: relative;
+  margin-top: 8px;
+  padding: 26px 22px 20px;
   text-align: center;
-  border: 1px solid rgba(255, 214, 0, 0.4);
+  color: #2a2419;
   background:
-    radial-gradient(80% 100% at 50% 0%, rgba(255, 214, 0, 0.12), transparent 70%),
-    var(--surface);
+    repeating-linear-gradient(0deg, transparent, transparent 22px, rgba(120, 90, 40, 0.05) 23px),
+    linear-gradient(160deg, #f3e6c8, #e7d3a6 60%, #dcc48c);
+  border: 1px solid rgba(120, 90, 40, 0.35);
+  border-radius: 6px;
+  box-shadow:
+    0 14px 30px rgba(0, 0, 0, 0.5),
+    inset 0 0 40px rgba(120, 90, 40, 0.18);
+  transform: rotate(-1deg);
+  animation: certIn 500ms cubic-bezier(0.2, 1, 0.3, 1) both;
 }
 
-.winner-name {
-  font-size: 2.4rem;
-  color: var(--team-accent);
-  text-shadow: 0 0 30px var(--team-accent);
+@keyframes certIn {
+  from { opacity: 0; transform: rotate(-1deg) translateY(18px) scale(0.96); }
+  to { opacity: 1; transform: rotate(-1deg) translateY(0) scale(1); }
+}
+
+.cert-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(80, 60, 30, 0.75);
+}
+
+.cert-stamp {
+  position: absolute;
+  top: 16px;
+  right: 12px;
+  font-size: 1.5rem;
+  color: var(--red);
+  border-color: var(--red);
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+}
+
+.cert-intro {
+  margin-top: 16px;
+  font-size: 0.9rem;
+  color: rgba(60, 45, 22, 0.85);
+}
+
+.cert-name {
+  font-size: 3.2rem;
+  line-height: 1;
+  margin: 6px 0;
+  color: #3a2c12;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.cert-desc {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: rgba(60, 45, 22, 0.9);
+  max-width: 30ch;
+  margin: 0 auto;
+}
+
+.cert-stats {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(80, 60, 30, 0.8);
+  border-top: 1px dashed rgba(120, 90, 40, 0.4);
+  border-bottom: 1px dashed rgba(120, 90, 40, 0.4);
+  padding: 8px 0;
+  display: inline-block;
+}
+
+.cert-sign {
+  margin-top: 14px;
+  font-size: 1.5rem;
+  color: #6a2417;
+  transform: rotate(-3deg);
 }
 
 .ranking-list {

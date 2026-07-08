@@ -1454,13 +1454,17 @@ function renderEnded(state, teamState) {
 
   app.innerHTML = `
     <div class="screen screen-ended" style="--team-accent:${color.hex}">
-      ${brandHeader("Spel afgelopen")}
-
       ${winner ? `
-        <section class="panel winner-panel" style="--team-accent:${findTeamColor(winner.colorId).hex}">
-          <span class="field-label">Winnaar</span>
-          <h2 class="winner-name">${esc(winner.name)}</h2>
-          <p>${winner.completedRounds} rondes · vak ${winner.position}</p>
+        <section class="certificate" style="--team-accent:${findTeamColor(winner.colorId).hex}">
+          <span class="tape tape-tl"></span>
+          <span class="tape tape-tr"></span>
+          <p class="cert-eyebrow">Zuip-O-Poly Nijmegen · Oorkonde</p>
+          <div class="cert-stamp stamp">Winnaar</div>
+          <p class="cert-intro">Hierbij wordt plechtig verklaard dat</p>
+          <h2 class="cert-name hand">${esc(winner.name)}</h2>
+          <p class="cert-desc">de kroegentocht met verve heeft volbracht en zich kroont tot kampioen van de avond.</p>
+          <p class="cert-stats">${winner.completedRounds} ${winner.completedRounds === 1 ? "ronde" : "rondes"} · vak ${winner.position}</p>
+          <p class="cert-sign hand">Namens Nijmegen — proost! 🍻</p>
         </section>
       ` : ""}
 
