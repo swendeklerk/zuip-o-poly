@@ -252,8 +252,55 @@ function startWheelSpin(index) {
   wheelSpin.timer = window.setTimeout(() => {
     wheelSpin.active = false;
     feedback.confirm();
-    render();
+    // Geen volledige her-render (dat zou het scherm laten flitsen doordat
+    // entree-animaties opnieuw starten). Patch alleen wat veranderde.
+    patchVanOudsAfterSpin();
   }, 2750);
+}
+
+// Werkt na een raddraai alleen de spelerslijst, de knop en de winnaar-highlight
+// bij — zonder het hele scherm te herbouwen (voorkomt de zwarte flits).
+function patchVanOudsAfterSpin() {
+  const session = getSession();
+  const teamState = getState()?.teams?.[session?.teamId];
+  const task = teamState?.currentTask;
+  if (task?.specialFlow !== "vanOuds") {
+    render();
+    return;
+  }
+
+  const rows = app.querySelectorAll(".vanouds-players .special-row");
+  task.vanOudsChoices.forEach((choice, index) => {
+    const row = rows[index];
+    if (row && choice.result) {
+      row.innerHTML = `<span>${esc(choice.name)}</span><strong>${esc(choice.result)}</strong>`;
+    }
+  });
+
+  // Winnaar-segment markeren.
+  app.querySelectorAll(".wheel-svg path").forEach((path, index) => {
+    path.setAttribute("fill-opacity", index === wheelSpin.lastIndex ? "1" : "0.85");
+  });
+
+  const next = task.vanOudsChoices.find((choice) => !choice.result);
+  const spinBtn = app.querySelector('[data-action="vanouds-spin"]');
+  if (next) {
+    if (spinBtn) {
+      spinBtn.disabled = false;
+      spinBtn.dataset.choiceId = next.id;
+      spinBtn.textContent = `Draai voor ${next.name}`;
+    }
+  } else if (spinBtn) {
+    // Iedereen heeft gedraaid: knop vervangen en bevestigen vrijgeven als de
+    // minimumtimer voorbij is.
+    spinBtn.outerHTML = '<p class="vanouds-done">Iedereen heeft gedraaid! 🍻</p>';
+    if (getTaskConfirmRemaining(teamState) <= 0) {
+      app.querySelectorAll('[data-action="confirm-task"], [data-action="confirm-task-bonus"]').forEach((btn) => {
+        btn.disabled = false;
+        btn.classList.add("cta-pulse");
+      });
+    }
+  }
 }
 
 function maybeStartWalk(state, teamState) {
