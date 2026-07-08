@@ -437,7 +437,7 @@ function render() {
 // Nieuwe hero-banner met terugval naar het oude logo zolang het bestand nog
 // niet is toegevoegd.
 const HERO_IMG =
-  '<img class="brand-logo" src="./assets/zuipopoly-hero.png" alt="Zuip-O-Poly" ' +
+  '<img class="brand-logo" src="./assets/zuipopoly-hero.jpg" alt="Zuip-O-Poly" ' +
   "onerror=\"this.onerror=null;this.src='./assets/zuipopoly-logo-full.svg';\" />";
 
 function brandHeader(subtitle = "") {
@@ -1269,7 +1269,7 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
           `;
         }).join("")}
         <div class="board-center">
-          <img src="./assets/zuipopoly-hero.png" alt="" onerror="this.onerror=null;this.src='./assets/zuipopoly-board-logo.svg';" />
+          <img src="./assets/zuipopoly-hero.jpg" alt="" onerror="this.onerror=null;this.src='./assets/zuipopoly-board-logo.svg';" />
           <span class="board-center-pos">${centerLabel}</span>
         </div>
       </div>
