@@ -234,9 +234,10 @@ p {
 }
 
 .brand-logo {
-  width: min(240px, 70%);
+  width: min(460px, 100%);
   height: auto;
-  filter: drop-shadow(0 0 24px rgba(232, 0, 29, 0.35));
+  border-radius: 10px;
+  filter: drop-shadow(0 6px 22px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 24px rgba(232, 0, 29, 0.25));
 }
 
 .brand-slogan {
@@ -1583,10 +1584,13 @@ p {
 }
 
 .board-center img {
-  width: 54%;
+  width: 96%;
+  max-height: 66%;
   height: auto;
-  opacity: 0.9;
-  filter: drop-shadow(0 0 20px rgba(232, 0, 29, 0.3));
+  object-fit: contain;
+  border-radius: 6px;
+  opacity: 0.95;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.5));
 }
 
 .board-center-pos {

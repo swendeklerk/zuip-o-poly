@@ -434,11 +434,17 @@ function render() {
 /* Bouwstenen                                                          */
 /* ------------------------------------------------------------------ */
 
-function brandHeader(subtitle = "Niet zomaar een kroegentocht.") {
+// Nieuwe hero-banner met terugval naar het oude logo zolang het bestand nog
+// niet is toegevoegd.
+const HERO_IMG =
+  '<img class="brand-logo" src="./assets/zuipopoly-hero.png" alt="Zuip-O-Poly" ' +
+  "onerror=\"this.onerror=null;this.src='./assets/zuipopoly-logo-full.svg';\" />";
+
+function brandHeader(subtitle = "") {
   return `
     <header class="brand-header">
-      <img class="brand-logo" src="./assets/zuipopoly-logo-full.svg" alt="Zuip-O-Poly" />
-      <p class="brand-slogan">${esc(subtitle)}</p>
+      ${HERO_IMG}
+      ${subtitle ? `<p class="brand-slogan">${esc(subtitle)}</p>` : ""}
     </header>
   `;
 }
@@ -518,7 +524,6 @@ function renderEntry(notice = "") {
   app.innerHTML = `
     <div class="screen screen-home">
       ${brandHeader()}
-      <p class="home-tagline hand">De kroegentocht die terugvecht.</p>
       ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
       <div class="home-actions">
         <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
@@ -1264,7 +1269,7 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
           `;
         }).join("")}
         <div class="board-center">
-          <img src="./assets/zuipopoly-board-logo.svg" alt="" />
+          <img src="./assets/zuipopoly-hero.png" alt="" onerror="this.onerror=null;this.src='./assets/zuipopoly-board-logo.svg';" />
           <span class="board-center-pos">${centerLabel}</span>
         </div>
       </div>
