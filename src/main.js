@@ -11,6 +11,7 @@ import {
   TEAM_RULES
 } from "./data/gameConfig.js";
 import { GAME_PHASE, STATUS_META, TEAM_STATUS } from "./data/statuses.js";
+import { CAFE_VAN_OUDS_WHEEL_OPTIONS } from "./data/tileAssignments.js";
 import { feedback, getFeedbackSettings, setFeedbackSetting } from "./services/feedback.js";
 import {
   chooseTeam,
@@ -176,6 +177,92 @@ function boardWrap(n) {
   return ((((n - 1) % size) + size) % size) + 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* Rad van Bier en Vertier (Café Van Ouds)                             */
+/* ------------------------------------------------------------------ */
+
+let wheelSpin = { active: false, rotation: 0, lastIndex: null, timer: null };
+const WHEEL_COLORS = ["#e8001d", "#ffd600", "#c800ff", "#00d4ff", "#00d464", "#ff7a00"];
+
+function polarPoint(cx, cy, r, deg) {
+  const rad = ((deg - 90) * Math.PI) / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+// Statische SVG van het rad: één taartpunt per drankje, label radiaal.
+function wheelSvg() {
+  const options = CAFE_VAN_OUDS_WHEEL_OPTIONS;
+  const n = options.length;
+  const seg = 360 / n;
+  const cx = 100;
+  const cy = 100;
+  const r = 96;
+  const slices = options
+    .map((label, i) => {
+      const start = i * seg;
+      const end = (i + 1) * seg;
+      const [x1, y1] = polarPoint(cx, cy, r, start);
+      const [x2, y2] = polarPoint(cx, cy, r, end);
+      const color = WHEEL_COLORS[i % WHEEL_COLORS.length];
+      const path = `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+      const mid = start + seg / 2;
+      const [tx, ty] = polarPoint(cx, cy, r * 0.62, mid);
+      const short = label.length > 12 ? `${label.slice(0, 11)}…` : label;
+      const winner = wheelSpin.lastIndex === i;
+      return `
+        <path d="${path}" fill="${color}" fill-opacity="${winner ? 1 : 0.82}" stroke="#080809" stroke-width="1.2" />
+        <text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" transform="rotate(${mid} ${tx.toFixed(1)} ${ty.toFixed(1)})"
+          font-size="7" font-family="Inter, sans-serif" font-weight="700" fill="#080809"
+          text-anchor="middle" dominant-baseline="middle">${esc(short)}</text>
+      `;
+    })
+    .join("");
+  return `
+    <svg viewBox="0 0 200 200" class="wheel-svg" xmlns="http://www.w3.org/2000/svg">
+      ${slices}
+      <circle cx="${cx}" cy="${cy}" r="14" fill="#111116" stroke="#f0eef4" stroke-width="2" />
+    </svg>
+  `;
+}
+
+// Laat het rad naar het gekozen segment draaien (altijd voorwaarts, meerdere
+// volledige slagen voor het effect).
+function startWheelSpin(index) {
+  const n = CAFE_VAN_OUDS_WHEEL_OPTIONS.length;
+  const seg = 360 / n;
+  // Segmentmidden moet onder de wijzer (boven) komen: rotatie ≡ -(i*seg + seg/2).
+  const landAt = (((-(index * seg + seg / 2)) % 360) + 360) % 360;
+  const from = wheelSpin.rotation;
+  const target = Math.ceil((from + 1) / 360) * 360 + 360 * 4 + landAt;
+
+  wheelSpin.lastIndex = index;
+  wheelSpin.active = true;
+  wheelSpin.rotation = target;
+  feedback.diceRattle();
+
+  // CSS-transitie op het bestaande element; de render-guard houdt het element
+  // intact tijdens de draai zodat de transitie niet gebroken wordt.
+  const spinner = document.querySelector(".wheel-spinner");
+  const spinBtn = document.querySelector('[data-action="vanouds-spin"]');
+  if (spinBtn) {
+    spinBtn.disabled = true;
+  }
+  if (spinner) {
+    spinner.style.transition = "none";
+    spinner.style.transform = `rotate(${from}deg)`;
+    void spinner.offsetWidth; // commit begintoestand (reflow)
+    spinner.style.transition = "transform 2.7s cubic-bezier(0.15, 0.85, 0.2, 1)";
+    spinner.style.transform = `rotate(${target}deg)`;
+  }
+
+  window.clearTimeout(wheelSpin.timer);
+  wheelSpin.timer = window.setTimeout(() => {
+    wheelSpin.active = false;
+    feedback.confirm();
+    render();
+  }, 2750);
+}
+
 function maybeStartWalk(state, teamState) {
   const move = teamState.lastMove;
   // Eerste keer in het spel: zet de basislijn op de al bestaande worp (bij
@@ -245,6 +332,12 @@ function advanceWalk() {
 }
 
 function render() {
+  // Niet opnieuw renderen terwijl het rad draait; dat zou het element
+  // vervangen en de draai-animatie breken. De settle-timer rendert daarna.
+  if (wheelSpin.active) {
+    return;
+  }
+
   // Niet midden in de dobbelsteenanimatie opnieuw renderen.
   if (document.querySelector(".dice-panel.is-rolling")) {
     if (!renderQueued) {
@@ -857,17 +950,27 @@ function renderSpecialFlow(task) {
   }
 
   if (task.specialFlow === "vanOuds") {
+    const next = task.vanOudsChoices.find((choice) => !choice.result);
     return `
-      <div class="special-flow">
+      <div class="special-flow vanouds-flow">
         <p class="special-flow-title">Rad van Bier en Vertier — iedereen draait één keer:</p>
-        ${task.vanOudsChoices.map((choice) => `
-          <div class="special-row">
-            <span>${esc(choice.name)}</span>
-            ${choice.result
-              ? `<strong>${esc(choice.result)}</strong>`
-              : `<button class="button gold small" data-action="vanouds-spin" data-choice-id="${choice.id}">Draai</button>`}
+        <div class="wheel-wrap">
+          <div class="wheel-pointer" aria-hidden="true"></div>
+          <div class="wheel-spinner" style="transform: rotate(${wheelSpin.rotation}deg);">
+            ${wheelSvg()}
           </div>
-        `).join("")}
+        </div>
+        <div class="vanouds-players">
+          ${task.vanOudsChoices.map((choice) => `
+            <div class="special-row">
+              <span>${esc(choice.name)}</span>
+              ${choice.result ? `<strong>${esc(choice.result)}</strong>` : '<span class="row-muted">nog niet gedraaid</span>'}
+            </div>
+          `).join("")}
+        </div>
+        ${next
+          ? `<button class="button gold" data-action="vanouds-spin" data-choice-id="${next.id}" ${wheelSpin.active ? "disabled" : ""}>Draai voor ${esc(next.name)}</button>`
+          : '<p class="vanouds-done">Iedereen heeft gedraaid! 🍻</p>'}
       </div>
     `;
   }
@@ -1108,7 +1211,6 @@ function renderEventLog(state) {
   }
   return `
     <section class="panel eventlog-panel">
-      <h2>Live</h2>
       <ul class="eventlog-list">
         ${events.map((event) => `<li>${esc(event.text)}</li>`).join("")}
       </ul>
@@ -1521,9 +1623,18 @@ app.addEventListener("click", (event) => {
     case "dock17-reveal":
       revealDock17Choices(session.teamId);
       break;
-    case "vanouds-spin":
-      spinVanOudsWheel(session.teamId, target.dataset.choiceId);
+    case "vanouds-spin": {
+      if (wheelSpin.active) {
+        break;
+      }
+      const choiceId = target.dataset.choiceId;
+      spinVanOudsWheel(session.teamId, choiceId);
+      const spunChoice = getState()?.teams?.[session.teamId]?.currentTask?.vanOudsChoices?.find(
+        (choice) => choice.id === choiceId
+      );
+      startWheelSpin(spunChoice?.resultIndex ?? 0);
       break;
+    }
     case "flip-card": {
       const card = target.closest(".flip-card");
       if (card && !card.classList.contains("flipped")) {
