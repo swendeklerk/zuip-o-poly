@@ -1269,7 +1269,7 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
           `;
         }).join("")}
         <div class="board-center">
-          <img src="./assets/zuipopoly-hero.jpg" alt="" onerror="this.onerror=null;this.src='./assets/zuipopoly-board-logo.svg';" />
+          <img src="./assets/zuipopoly-emblem.png" alt="" onerror="this.onerror=null;this.src='./assets/zuipopoly-board-logo.svg';" />
           <span class="board-center-pos">${centerLabel}</span>
         </div>
       </div>
