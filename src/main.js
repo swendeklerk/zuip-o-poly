@@ -1985,7 +1985,9 @@ window.setInterval(() => {
   updateVisibleTimers();
 }, 1000);
 
-if (new URLSearchParams(window.location.search).get("reset") === "1") {
+// ?reset=1 en ?turbo=1 beginnen altijd met een schoon spel (geen oud spel hervatten).
+const startParams = new URLSearchParams(window.location.search);
+if (startParams.get("reset") === "1" || startParams.get("turbo") === "1") {
   clearSession();
 }
 
