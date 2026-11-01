@@ -43,26 +43,51 @@ export function findTeamColor(colorId) {
   return TEAM_COLORS.find((color) => color.id === colorId) ?? TEAM_COLORS[0];
 }
 
+// Turbo-testmodus: alle timers ~15x korter om het hele spel snel te doorlopen.
+// Aan via ?turbo=1 (blijft onthouden), uit via ?turbo=0 of de knop op het startscherm.
+const TURBO_KEY = "zuipopoly.turbo";
+
+function readTurbo() {
+  try {
+    const param = new URLSearchParams(window.location.search).get("turbo");
+    if (param === "1" || param === "0") {
+      window.localStorage.setItem(TURBO_KEY, param);
+    }
+    return window.localStorage.getItem(TURBO_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export const TURBO = readTurbo();
+
+export function setTurbo(on) {
+  window.localStorage.setItem(TURBO_KEY, on ? "1" : "0");
+}
+
+const timerSeconds = (seconds) =>
+  TURBO && seconds > 0 ? Math.max(3, Math.round(seconds / 15)) : seconds;
+
 export const GAME_CONFIG = {
-  countdownSeconds: 10,
+  countdownSeconds: timerSeconds(10),
   startTileId: 1,
   boardSize: 40,
   minTeams: 1,
   maxTeams: 8,
   skipPenaltySteps: 2,
-  jailWaitSeconds: 7 * 60,
-  swapWaitSeconds: 3 * 60,
-  attackWaitSeconds: 3 * 60,
+  jailWaitSeconds: timerSeconds(7 * 60),
+  swapWaitSeconds: timerSeconds(3 * 60),
+  attackWaitSeconds: timerSeconds(3 * 60),
   roomCodeLength: 5
 };
 
 // Minimumtimers per opdrachtsoort (seconden). Refresh reset een timer nooit:
 // timers zijn gebaseerd op een opgeslagen absolute starttijd.
 export const TASK_TIMERS = {
-  short: 30,
-  bar: 75,
-  location: 180,
-  snack: 120,
+  short: timerSeconds(30),
+  bar: timerSeconds(75),
+  location: timerSeconds(180),
+  snack: timerSeconds(120),
   none: 0
 };
 

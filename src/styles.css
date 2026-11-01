@@ -2383,3 +2383,37 @@ body.hit-flash::after {
   font-size: 0.85rem;
   padding: 8px 10px;
 }
+
+/* Turbo-testmodus */
+.turbo-badge {
+  position: fixed;
+  top: 6px;
+  right: 6px;
+  z-index: 70;
+  pointer-events: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #070707;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  box-shadow: 0 0 14px rgba(255, 214, 0, 0.5);
+}
+
+.turbo-toggle.is-on {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 214, 0, 0.08);
+}
+
+/* Turbo: worp-animatie en pionhop korter. */
+html.turbo .die.is-rolling,
+html.turbo .die.is-rolling .die-cube {
+  animation-duration: 550ms;
+}
+
+html.turbo .board-pawn {
+  animation-duration: 140ms;
+}

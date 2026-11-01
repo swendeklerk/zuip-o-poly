@@ -3,6 +3,7 @@ import {
   findGameMode,
   findTeamColor,
   GAME_CONFIG,
+  TASK_TIMERS,
   TEAM_COLORS
 } from "../data/gameConfig.js";
 import { CARD_DECKS, drawCard } from "../data/cards.js";
@@ -877,13 +878,12 @@ function createTaskFromCard(card, presentation, teamState) {
       title: verdict.title,
       body: verdict.body,
       skippable: true,
-      timerSeconds: 75
+      timerSeconds: TASK_TIMERS.bar
     };
   }
 
   if (card.timerType) {
-    const timers = { short: 30, bar: 75, snack: 120, location: 180 };
-    base.timerSeconds = timers[card.timerType] ?? 0;
+    base.timerSeconds = TASK_TIMERS[card.timerType] ?? 0;
   }
 
   return base;
@@ -1780,7 +1780,7 @@ function resolveUnoReverse(state, teamId, targetTeamId) {
     presentation: "task",
     effectType: "task",
     skippable: true,
-    timerSeconds: 75
+    timerSeconds: TASK_TIMERS.bar
   };
 
   const targetIsIdle = targetState.status === TEAM_STATUS.CAN_ROLL && !targetState.currentTask;

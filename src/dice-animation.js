@@ -1,4 +1,11 @@
-const rollDurationMs = 1400;
+const isTurbo = (() => {
+  try {
+    return window.localStorage.getItem("zuipopoly.turbo") === "1";
+  } catch {
+    return false;
+  }
+})();
+const rollDurationMs = isTurbo ? 550 : 1400;
 let activeRollTeamId = null;
 
 document.addEventListener(

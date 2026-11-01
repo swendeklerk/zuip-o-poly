@@ -21,6 +21,12 @@ Heb je Python? Dan werkt ook `python -m http.server 5173`. Open daarna
   direct in een lopend spel met een testpaneel (teleporteren, kaarten trekken,
   aanvallen simuleren, timers overslaan).
 
+- **Snel het hele spel doorlopen (Turbo-test):** zet op het startscherm de knop
+  **Turbo-test** aan, of open `?turbo=1`. Alle timers (aftelling, opdrachten, cel,
+  wisselstation, aanval) zijn dan ~15x korter en de animaties sneller. Uit via de
+  knop of `?turbo=0`. Het blijft onthouden in de browser; een gele TURBO-badge toont
+  dat het aan staat.
+
 ## Build / hosting
 
 Voor Vercel is een static build voorbereid:

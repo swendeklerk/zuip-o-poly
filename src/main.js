@@ -8,8 +8,10 @@ import {
   findTeamColor,
   GAME_CONFIG,
   GAME_MODES,
+  setTurbo,
   TEAM_COLORS,
-  TEAM_RULES
+  TEAM_RULES,
+  TURBO
 } from "./data/gameConfig.js";
 import { GAME_PHASE, STATUS_META, TEAM_STATUS } from "./data/statuses.js";
 import { CAFE_VAN_OUDS_WHEEL_OPTIONS } from "./data/tileAssignments.js";
@@ -168,8 +170,8 @@ let lastCountdownValue = null;
 
 // Stap-voor-stap pion-animatie. De store verplaatst de pion direct naar de
 // eindpositie; de UI laat 'm zichtbaar vak voor vak lopen via lastMove.steps.
-const WALK_STEP_MS = 520;
-const DICE_REVEAL_MS = 1700;
+const WALK_STEP_MS = TURBO ? 160 : 520;
+const DICE_REVEAL_MS = TURBO ? 450 : 1700;
 let walk = { active: false, reveal: false, cells: [], index: 0, timer: null, revealTimer: null, movedAt: 0, roll: null };
 let walkInited = false;
 
@@ -530,6 +532,9 @@ function renderEntry(notice = "") {
         <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
         <button class="button ghost big" data-action="nav-join">Meedoen met spelcode</button>
         <button class="button gold big" data-action="start-demo">Testmodus — probeer alles</button>
+        <button class="button ghost turbo-toggle ${TURBO ? "is-on" : ""}" data-action="toggle-turbo">
+          ⚡ Turbo-test: ${TURBO ? "AAN — timers ~15x korter" : "uit — timers in echte tijd"}
+        </button>
       </div>
       <section class="panel home-rules">
         <h2>Zo werkt het</h2>
@@ -1788,6 +1793,10 @@ app.addEventListener("click", (event) => {
     case "demo-restart":
       startDemoGame();
       break;
+    case "toggle-turbo":
+      setTurbo(!TURBO);
+      window.location.reload();
+      break;
     case "demo-roll":
       rollDice(session.teamId, Number(target.dataset.roll));
       break;
@@ -1978,6 +1987,14 @@ window.setInterval(() => {
 
 if (new URLSearchParams(window.location.search).get("reset") === "1") {
   clearSession();
+}
+
+if (TURBO) {
+  document.documentElement.classList.add("turbo");
+  const badge = document.createElement("div");
+  badge.className = "turbo-badge";
+  badge.textContent = "⚡ TURBO";
+  document.body.appendChild(badge);
 }
 
 // ?demo=1 start de testmodus direct.
