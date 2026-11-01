@@ -1496,7 +1496,8 @@ export function chooseTeam(teamId, targetTeamId) {
     }
 
     // Schild blokkeert vijandige acties en wordt daarbij verbruikt.
-    const hostile = task.effectType !== "team_choice_notify";
+    // team_choice_notify (drankje uitdelen) en share_task (Zuipmaatjes) zijn niet vijandig.
+    const hostile = !["team_choice_notify", "share_task"].includes(task.effectType);
     const targetShield = getShieldPowerUp(targetState);
     if (hostile && targetShield) {
       const blockedState = logEvent(
@@ -1516,15 +1517,15 @@ export function chooseTeam(teamId, targetTeamId) {
               ...targetState,
               savedPowerUps: removeSavedPowerUp(targetState, targetShield.id),
               activePopup: {
-                title: "Hong Beschermt",
-                body: "Een ander team probeerde jullie te raken, maar Hong Beschermt heeft de actie geblokkeerd. Deze bescherming is nu gebruikt.",
+                title: "Geluksvogel",
+                body: "Een ander team probeerde jullie te raken, maar Geluksvogel heeft de actie geblokkeerd. Deze power-up is nu gebruikt.",
                 kind: "fund",
                 stage: "detail"
               }
             }
           }
         },
-        `${targetState.name} blokkeerde een aanval met Hong Beschermt.`
+        `${targetState.name} blokkeerde een aanval met Geluksvogel.`
       );
       return blockedState;
     }
@@ -1542,6 +1543,8 @@ export function chooseTeam(teamId, targetTeamId) {
         return resolveSwapPositions(state, teamId, targetTeamId);
       case "uno_reverse":
         return resolveUnoReverse(state, teamId, targetTeamId);
+      case "share_task":
+        return resolveShareTask(state, teamId, targetTeamId);
       default:
         return state;
     }
@@ -1824,6 +1827,65 @@ function resolveUnoReverse(state, teamId, targetTeamId) {
   return logEvent(nextState, `${teamState.name} gebruikte Uno Reverse op ${targetState.name}.`);
 }
 
+// Zuipmaatjes: eigen team behoudt de lopende opdracht, gekozen team krijgt
+// een kopie van dezelfde opdracht (of zodra hun huidige actie klaar is).
+function resolveShareTask(state, teamId, targetTeamId) {
+  const teamState = state.teams[teamId];
+  const targetState = state.teams[targetTeamId];
+  const [restoredTask, ...restPending] = teamState.pendingTasks ?? [];
+  const sharedTask = restoredTask?.task ?? null;
+
+  if (!sharedTask) {
+    return state;
+  }
+
+  const clonedTask = { ...sharedTask, startedAt: now() };
+  const targetIsIdle = targetState.status === TEAM_STATUS.CAN_ROLL && !targetState.currentTask;
+
+  const nextState = {
+    ...state,
+    teams: {
+      ...state.teams,
+      [teamId]: {
+        ...teamState,
+        currentTask: { ...sharedTask, startedAt: now() },
+        pendingTasks: restPending,
+        status: TEAM_STATUS.TASK_ACTIVE,
+        activePopup: {
+          title: "Zuipmaatjes gekozen",
+          body: `${targetState.name} voert nu dezelfde opdracht uit als jullie.`,
+          kind: "fund",
+          stage: "detail"
+        }
+      },
+      [targetTeamId]: targetIsIdle
+        ? {
+            ...targetState,
+            currentTask: clonedTask,
+            status: TEAM_STATUS.TASK_ACTIVE,
+            activePopup: {
+              title: "Zuipmaatjes",
+              body: `${teamState.name} heeft jullie gekozen als Zuipmaatjes. Voer dezelfde opdracht uit: ${clonedTask.body}`,
+              kind: "fund",
+              stage: "detail"
+            }
+          }
+        : {
+            ...targetState,
+            pendingTasks: [...(targetState.pendingTasks ?? []), { kind: "task", task: clonedTask }],
+            activePopup: {
+              title: "Zuipmaatjes",
+              body: `${teamState.name} heeft jullie gekozen als Zuipmaatjes. Jullie krijgen dezelfde opdracht zodra jullie huidige actie is afgerond.`,
+              kind: "fund",
+              stage: "detail"
+            }
+          }
+    }
+  };
+
+  return logEvent(nextState, `${teamState.name} deelt de opdracht met ${targetState.name} (Zuipmaatjes).`);
+}
+
 // Escape als er geen enkel team kiesbaar is (cel/bescherming/gefinisht):
 // de teamkeuze vervalt zonder effect.
 export function resolveChoiceWithoutTarget(teamId) {
@@ -1916,6 +1978,34 @@ export function usePowerUp(teamId, powerUpId) {
               body: "Kies het team dat de wodka-Red Bull-opdracht krijgt.",
               presentation: "fund",
               effectType: "uno_reverse",
+              skippable: false,
+              timerSeconds: 0,
+              startedAt: now()
+            },
+            status: TEAM_STATUS.CHOOSING_TEAM
+          }
+        }
+      };
+    }
+
+    if (
+      powerUp.type === "share_task" &&
+      teamState.status === TEAM_STATUS.TASK_ACTIVE &&
+      teamState.currentTask
+    ) {
+      return {
+        ...state,
+        teams: {
+          ...state.teams,
+          [teamId]: {
+            ...teamState,
+            savedPowerUps: removeSavedPowerUp(teamState, powerUp.id),
+            pendingTasks: [{ kind: "task", task: teamState.currentTask }, ...(teamState.pendingTasks ?? [])],
+            currentTask: {
+              title: "Zuipmaatjes",
+              body: "Kies het team dat dezelfde opdracht met jullie mee moet doen.",
+              presentation: "fund",
+              effectType: "share_task",
               skippable: false,
               timerSeconds: 0,
               startedAt: now()
@@ -2246,9 +2336,10 @@ export function demoGivePowerUps() {
     const all = [
       { type: "skip_task", label: "Opdracht overslaan", body: "Sla een opdracht over zonder straf. Daarna een bonusworp." },
       { type: "skip_free", label: "Gratis skip", body: "Skip één opdracht zonder de 2-vakjes-straf." },
-      { type: "shield", label: "Hong Beschermt", body: "Blokkeert automatisch de eerstvolgende aanval van een ander team." },
+      { type: "shield", label: "Geluksvogel", body: "Blokkeert automatisch de eerstvolgende Kans-, Fonds-, Wisselstation- of bonusactie van een ander team." },
       { type: "jail_free", label: "Celvrij", body: "Direct uit de echte cel, zonder wachttijd en strafopdracht." },
-      { type: "uno_reverse", label: "Uno Reverse", body: "Wijs een ander team aan voor de wodka-Red Bull-opdracht." }
+      { type: "uno_reverse", label: "Uno Reverse", body: "Wijs een ander team aan voor de wodka-Red Bull-opdracht." },
+      { type: "share_task", label: "Zuipmaatjes", body: "Kies een team dat dezelfde opdracht met jullie mee moet doen." }
     ];
     const existing = new Set((teamState.savedPowerUps ?? []).map((powerUp) => powerUp.type));
     const added = all
@@ -2299,8 +2390,8 @@ export function demoIncomingAttack(kind) {
             ...teamState,
             savedPowerUps: removeSavedPowerUp(teamState, shield.id),
             activePopup: {
-              title: "Hong Beschermt",
-              body: "Een ander team probeerde jullie te raken, maar Hong Beschermt heeft de actie geblokkeerd. Deze bescherming is nu gebruikt.",
+              title: "Geluksvogel",
+              body: "Een ander team probeerde jullie te raken, maar Geluksvogel heeft de actie geblokkeerd. Deze power-up is nu gebruikt.",
               kind: "fund",
               stage: "detail"
             }

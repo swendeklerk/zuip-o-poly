@@ -1493,6 +1493,7 @@ p {
   position: relative;
   display: grid;
   grid-template-columns: repeat(11, 1fr);
+  grid-template-rows: repeat(11, 1fr);
   gap: 2px;
   aspect-ratio: 1;
   background: var(--black);
@@ -1506,12 +1507,77 @@ p {
   position: relative;
   border-radius: 3px;
   background: var(--surface2);
-  border-top: 3px solid var(--tile-color, var(--surface3));
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   overflow: hidden;
   min-width: 0;
+}
+
+.board-cell.edge-top,
+.board-cell.edge-bottom,
+.board-cell.edge-left,
+.board-cell.edge-right {
+  --tile-band: 9px;
+}
+
+.board-cell.edge-top::before,
+.board-cell.edge-bottom::before,
+.board-cell.edge-left::before,
+.board-cell.edge-right::before {
+  content: "";
+  position: absolute;
+  background: var(--tile-color, var(--surface3));
+  z-index: 0;
+}
+
+.board-cell.edge-top {
+  align-items: flex-end;
+}
+
+.board-cell.edge-top::before {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--tile-band);
+}
+
+.board-cell.edge-bottom {
+  align-items: flex-start;
+}
+
+.board-cell.edge-bottom::before {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--tile-band);
+}
+
+.board-cell.edge-left {
+  justify-content: flex-end;
+}
+
+.board-cell.edge-left::before {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--tile-band);
+}
+
+.board-cell.edge-right {
+  justify-content: flex-start;
+}
+
+.board-cell.edge-right::before {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--tile-band);
+}
+
+.board-cell.theme-chance::before,
+.board-cell.theme-fund::before {
+  display: none;
 }
 
 .board-cell-empty {
@@ -1519,13 +1585,47 @@ p {
   border-top: none;
 }
 
+.board-cell.theme-station {
+  background: var(--tile-color);
+}
+
+.board-cell-ns-logo,
+.board-cell-tile-icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Elk icoon krijgt zijn eigen breedte/hoogte op maat van de beeldverhouding,
+   zodat NS/Kans/Fonds visueel even zwaar ogen ipv verschillend door hun
+   afwijkende aspect ratio's. */
+.board-cell-ns-logo {
+  width: 78%;
+  height: 43%;
+}
+
+.board-cell-kans-icon {
+  width: 41%;
+  height: 78%;
+}
+
+.board-cell-fonds-icon {
+  width: 78%;
+  height: 66%;
+}
+
 .board-cell-label {
+  position: relative;
+  z-index: 1;
   font-family: var(--font-mono);
-  font-size: 6px;
+  font-size: 7.5px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--text-dim);
-  padding-bottom: 2px;
+  padding: 2px;
   white-space: nowrap;
   overflow: hidden;
   max-width: 100%;

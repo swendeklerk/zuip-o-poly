@@ -50,7 +50,7 @@ export const GAME_CONFIG = {
   minTeams: 1,
   maxTeams: 8,
   skipPenaltySteps: 2,
-  jailWaitSeconds: 4 * 60,
+  jailWaitSeconds: 7 * 60,
   swapWaitSeconds: 3 * 60,
   attackWaitSeconds: 3 * 60,
   roomCodeLength: 5
