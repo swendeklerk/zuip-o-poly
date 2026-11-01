@@ -1575,8 +1575,7 @@ p {
   width: var(--tile-band);
 }
 
-.board-cell.theme-chance::before,
-.board-cell.theme-fund::before {
+.board-cell.has-tile-image::before {
   display: none;
 }
 
@@ -1599,46 +1598,23 @@ p {
   z-index: 1;
 }
 
-/* Elk icoon krijgt zijn eigen breedte/hoogte op maat van de beeldverhouding,
-   zodat NS/Kans/Fonds visueel even zwaar ogen ipv verschillend door hun
-   afwijkende aspect ratio's. */
+/* NS-logo heeft een brede beeldverhouding; de vak-illustraties zijn vierkant
+   en vullen het vakje bijna helemaal. */
 .board-cell-ns-logo {
   width: 78%;
   height: 43%;
 }
 
-.board-cell-kans-icon {
-  width: 41%;
-  height: 78%;
-}
-
-.board-cell-fonds-icon {
-  width: 78%;
-  height: 66%;
-}
-
-.board-cell-label {
-  position: relative;
-  z-index: 1;
-  font-family: var(--font-mono);
-  font-size: 7.5px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  padding: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  max-width: 100%;
+.board-cell-tile-icon {
+  width: 92%;
+  height: 92%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
 .board-cell.is-here {
   background: var(--surface3);
   box-shadow: 0 0 12px var(--team-accent);
   z-index: 1;
-}
-
-.board-cell.is-here .board-cell-label {
-  color: var(--text);
 }
 
 .board-pawn {

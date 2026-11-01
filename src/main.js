@@ -1,5 +1,6 @@
 import { getBoardCells, BOARD_SIZE } from "./data/board.js";
 import { getTileTheme } from "./data/tileThemes.js";
+import { getTileImage } from "./data/tileImages.js";
 import { findTileById } from "./data/tiles.js";
 import {
   DEFAULT_MODE_ID,
@@ -1263,16 +1264,12 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
           const cellTile = findTileById(cell.tileId);
           const theme = getTileTheme(cellTile);
           const isHere = cell.tileId === pawnPosition;
-          const isStation = theme.className === "theme-station";
-          const isChance = theme.className === "theme-chance";
-          const isFund = theme.className === "theme-fund";
-          let cellIcon = `<span class="board-cell-label">${esc(theme.label)}</span>`;
-          if (isStation) {
+          const tileImage = getTileImage(cell.tileId);
+          let cellIcon = "";
+          if (tileImage) {
+            cellIcon = `<img class="board-cell-tile-icon" src="${tileImage}" alt="${esc(cellTile.name)}" />`;
+          } else if (theme.className === "theme-station") {
             cellIcon = '<img class="board-cell-ns-logo" src="./assets/ns-logo-station.svg" alt="NS" />';
-          } else if (isChance) {
-            cellIcon = '<img class="board-cell-tile-icon board-cell-kans-icon" src="./assets/kans-normalized.svg" alt="Kans" />';
-          } else if (isFund) {
-            cellIcon = '<img class="board-cell-tile-icon board-cell-fonds-icon" src="./assets/algemeen-fonds-normalized.svg" alt="Algemeen Fonds" />';
           }
           const edgeSide = cell.row === 0
             ? "bottom"
@@ -1282,7 +1279,7 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
                 ? "right"
                 : "left";
           return `
-            <div class="board-cell edge-${edgeSide} ${theme.className} ${isHere ? "is-here" : ""}" data-tile-id="${cell.tileId}" style="--tile-color:${theme.color}" title="${esc(cellTile.name)}">
+            <div class="board-cell edge-${edgeSide} ${theme.className} ${tileImage ? "has-tile-image" : ""} ${isHere ? "is-here" : ""}" data-tile-id="${cell.tileId}" style="--tile-color:${theme.color}" title="${esc(cellTile.name)}">
               ${cellIcon}
               ${isHere ? '<span class="board-pawn"></span>' : ""}
             </div>
