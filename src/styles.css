@@ -1222,7 +1222,7 @@ p {
 }
 
 .dice-stage {
-  min-height: 132px;
+  min-height: 112px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1230,35 +1230,34 @@ p {
 }
 
 .die.is-rolling {
-  animation: diceThrow 1100ms cubic-bezier(0.22, 0.62, 0.28, 1) both;
+  animation: diceThrow 1400ms cubic-bezier(0.25, 0.6, 0.3, 1) both;
   will-change: transform;
 }
 
-/* Echte worp: opgooien, ronddraaien, en stuiterend landen. */
+.die.is-rolling .die-cube {
+  animation: dieTumble 1400ms cubic-bezier(0.25, 0.6, 0.3, 1) both;
+}
+
+/* Echte worp: opgooien en stuiterend landen (het tollen zit in de kubus). */
 @keyframes diceThrow {
-  0% {
-    transform: translateY(0) rotate(-7deg) scale(1);
+  0% { transform: translateY(0) scale(1); }
+  18% { transform: translateY(-40px) scale(1.12); }
+  38% { transform: translateY(-44px) scale(1.1); }
+  60% { transform: translateY(8px) scale(0.94); }
+  76% { transform: translateY(-9px) scale(1.04); }
+  90% { transform: translateY(2px) scale(0.99); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+/* Tolt een paar keer rond alle assen en eindigt precies op de eigen stand. */
+@keyframes dieTumble {
+  from {
+    transform: rotateX(-12deg) rotateY(-14deg)
+      rotateX(calc(var(--rx) + 900deg)) rotateY(calc(var(--ry) + 1260deg));
   }
-  14% {
-    transform: translateY(-52px) rotate(130deg) scale(1.15);
-  }
-  30% {
-    transform: translateY(-58px) rotate(268deg) scale(1.12);
-  }
-  52% {
-    transform: translateY(10px) rotate(474deg) scale(0.92);
-  }
-  64% {
-    transform: translateY(-14px) rotate(566deg) scale(1.06);
-  }
-  78% {
-    transform: translateY(4px) rotate(636deg) scale(0.98);
-  }
-  90% {
-    transform: translateY(-3px) rotate(690deg) scale(1.02);
-  }
-  100% {
-    transform: translateY(0) rotate(713deg) scale(1);
+  to {
+    transform: rotateX(-12deg) rotateY(-14deg)
+      rotateX(var(--rx)) rotateY(var(--ry));
   }
 }
 
@@ -1312,21 +1311,67 @@ p {
   }
 }
 
+/* 3D-dobbelsteen in de teamkleur: zes vlakken in een kubus die naar de
+   gegooide waarde wordt gedraaid. Overstaande vlakken tellen op tot 7. */
 .die {
+  --die-size: 72px;
+  --rx: 0deg;
+  --ry: 0deg;
   position: relative;
-  width: 108px;
-  aspect-ratio: 1;
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 20px;
-  background:
-    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.95), transparent 18%),
-    linear-gradient(145deg, #fdfbf7, #e5e2ea 58%, #b9b4c4);
-  box-shadow:
-    0 18px 24px rgba(0, 0, 0, 0.46),
-    inset 5px 5px 10px rgba(255, 255, 255, 0.58),
-    inset -9px -10px 16px rgba(40, 38, 52, 0.22);
-  transform: rotate(-7deg);
+  width: var(--die-size);
+  height: var(--die-size);
+  perspective: 520px;
 }
+
+.die::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: -26px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55), transparent 70%);
+}
+
+.die-cube {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateX(-12deg) rotateY(-14deg) rotateX(var(--rx)) rotateY(var(--ry));
+}
+
+.face {
+  --shade: transparent;
+  position: absolute;
+  inset: 0;
+  border: 2px solid color-mix(in srgb, var(--team-accent) 55%, #000);
+  border-radius: 16px;
+  background:
+    linear-gradient(var(--shade), var(--shade)),
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.55), transparent 42%),
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--team-accent) 78%, #fff),
+      var(--team-accent) 55%,
+      color-mix(in srgb, var(--team-accent) 72%, #000));
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.22);
+  backface-visibility: hidden;
+}
+
+.face-1 { transform: translateZ(calc(var(--die-size) / 2)); }
+.face-6 { transform: rotateY(180deg) translateZ(calc(var(--die-size) / 2)); --shade: rgba(0, 0, 0, 0.3); }
+.face-3 { transform: rotateY(90deg) translateZ(calc(var(--die-size) / 2)); --shade: rgba(0, 0, 0, 0.14); }
+.face-4 { transform: rotateY(-90deg) translateZ(calc(var(--die-size) / 2)); --shade: rgba(0, 0, 0, 0.22); }
+.face-2 { transform: rotateX(90deg) translateZ(calc(var(--die-size) / 2)); --shade: rgba(255, 255, 255, 0.12); }
+.face-5 { transform: rotateX(-90deg) translateZ(calc(var(--die-size) / 2)); --shade: rgba(0, 0, 0, 0.38); }
+
+.die-1 { --rx: 0deg; --ry: 0deg; }
+.die-2 { --rx: -90deg; --ry: 0deg; }
+.die-3 { --rx: 0deg; --ry: -90deg; }
+.die-4 { --rx: 0deg; --ry: 90deg; }
+.die-5 { --rx: 90deg; --ry: 0deg; }
+.die-6 { --rx: 0deg; --ry: 180deg; }
 
 /* Grote onthulling van het gegooide getal. */
 .dice-reveal-panel {
@@ -1334,29 +1379,35 @@ p {
 }
 
 .die-reveal {
-  width: 132px;
-  animation: dieReveal 750ms cubic-bezier(0.18, 1.5, 0.4, 1) both;
-  box-shadow:
-    0 18px 30px rgba(0, 0, 0, 0.5),
-    0 0 40px color-mix(in srgb, var(--team-accent) 55%, transparent),
-    inset 5px 5px 10px rgba(255, 255, 255, 0.58),
-    inset -9px -10px 16px rgba(40, 38, 52, 0.22);
+  --die-size: 92px;
+  animation: dieReveal 700ms cubic-bezier(0.18, 1.5, 0.4, 1) both;
+}
+
+.die-reveal::before {
+  background: radial-gradient(ellipse at center,
+    color-mix(in srgb, var(--team-accent) 55%, transparent), transparent 70%);
+}
+
+/* De steen staat al op de gegooide zijde; de onthulling zet hem alleen groot
+   neer en laat het getal oplichten. */
+.die-reveal.die-1 .face-1,
+.die-reveal.die-2 .face-2,
+.die-reveal.die-3 .face-3,
+.die-reveal.die-4 .face-4,
+.die-reveal.die-5 .face-5,
+.die-reveal.die-6 .face-6 {
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.22), 0 0 28px var(--team-accent);
 }
 
 @keyframes dieReveal {
-  0% {
-    transform: rotate(-40deg) scale(0.4);
-    opacity: 0;
-  }
-  55% {
-    transform: rotate(4deg) scale(1.18);
-    opacity: 1;
-  }
-  75% {
-    transform: rotate(-7deg) scale(0.96);
-  }
-  100% {
-    transform: rotate(-7deg) scale(1);
+  0% { transform: scale(0.9); }
+  45% { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .die.is-rolling .die-cube {
+    animation: none;
   }
 }
 
@@ -1377,7 +1428,7 @@ p {
 /* Pips schalen mee met de dobbelsteen (percentages i.p.v. vaste pixels) en
    staan in het juiste 3x3-dobbelpatroon. top/left = midden van de pip. */
 .pip,
-.die::after {
+.face::after {
   position: absolute;
   width: 15.5%;
   height: 15.5%;
@@ -1391,7 +1442,7 @@ p {
   opacity: 0;
 }
 
-.die::after {
+.face::after {
   content: "";
   top: 50%;
   left: 50%;
@@ -1404,32 +1455,32 @@ p {
 .pip-5 { top: 73%; left: 27%; }
 .pip-6 { top: 73%; left: 73%; }
 
-.die-1::after { opacity: 1; }
+.face-1::after { opacity: 1; }
 
-.die-2 .pip-1,
-.die-2 .pip-6 { opacity: 1; }
+.face-2 .pip-1,
+.face-2 .pip-6 { opacity: 1; }
 
-.die-3 .pip-1,
-.die-3 .pip-6 { opacity: 1; }
-.die-3::after { opacity: 1; }
+.face-3 .pip-1,
+.face-3 .pip-6 { opacity: 1; }
+.face-3::after { opacity: 1; }
 
-.die-4 .pip-1,
-.die-4 .pip-2,
-.die-4 .pip-5,
-.die-4 .pip-6 { opacity: 1; }
+.face-4 .pip-1,
+.face-4 .pip-2,
+.face-4 .pip-5,
+.face-4 .pip-6 { opacity: 1; }
 
-.die-5 .pip-1,
-.die-5 .pip-2,
-.die-5 .pip-5,
-.die-5 .pip-6 { opacity: 1; }
-.die-5::after { opacity: 1; }
+.face-5 .pip-1,
+.face-5 .pip-2,
+.face-5 .pip-5,
+.face-5 .pip-6 { opacity: 1; }
+.face-5::after { opacity: 1; }
 
-.die-6 .pip-1,
-.die-6 .pip-2,
-.die-6 .pip-3,
-.die-6 .pip-4,
-.die-6 .pip-5,
-.die-6 .pip-6 { opacity: 1; }
+.face-6 .pip-1,
+.face-6 .pip-2,
+.face-6 .pip-3,
+.face-6 .pip-4,
+.face-6 .pip-5,
+.face-6 .pip-6 { opacity: 1; }
 
 /* ------------------------------------------------------------------
    Power-ups
@@ -1628,7 +1679,7 @@ p {
   background: var(--team-accent);
   border: 2px solid rgba(255, 255, 255, 0.9);
   box-shadow: 0 0 12px var(--team-accent), 0 3px 6px rgba(0, 0, 0, 0.5);
-  animation: pawnHop 180ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
+  animation: pawnHop 300ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
   z-index: 2;
 }
 
@@ -1947,6 +1998,44 @@ body.hit-flash::after {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.flip-art {
+  width: min(62%, 220px);
+  height: auto;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.55));
+  animation: artFloat 2.6s ease-in-out infinite;
+}
+
+/* Illustratie van het vak bovenaan een pop-up. */
+.popup-art {
+  align-self: center;
+  width: 150px;
+  height: auto;
+  margin: -6px 0 -2px;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.5));
+  animation: artPop 520ms cubic-bezier(0.2, 1.3, 0.35, 1) both;
+}
+
+.popup-art-small {
+  width: 96px;
+}
+
+@keyframes artPop {
+  from { opacity: 0; transform: translateY(10px) scale(0.7) rotate(-6deg); }
+  to { opacity: 1; transform: translateY(0) scale(1) rotate(0); }
+}
+
+@keyframes artFloat {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50% { transform: translateY(-6px) rotate(1.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-art,
+  .popup-art {
+    animation: none;
+  }
 }
 
 .flip-mark {

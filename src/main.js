@@ -168,8 +168,8 @@ let lastCountdownValue = null;
 
 // Stap-voor-stap pion-animatie. De store verplaatst de pion direct naar de
 // eindpositie; de UI laat 'm zichtbaar vak voor vak lopen via lastMove.steps.
-const WALK_STEP_MS = 320;
-const DICE_REVEAL_MS = 750;
+const WALK_STEP_MS = 520;
+const DICE_REVEAL_MS = 1700;
 let walk = { active: false, reveal: false, cells: [], index: 0, timer: null, revealTimer: null, movedAt: 0, roll: null };
 let walkInited = false;
 
@@ -814,14 +814,20 @@ function renderGame(state, teamState) {
   `;
 }
 
+function renderDie(face, extraClass = "") {
+  const pips = [1, 2, 3, 4, 5, 6].map((pip) => `<span class="pip pip-${pip}"></span>`).join("");
+  const faces = [1, 2, 3, 4, 5, 6]
+    .map((n) => `<div class="face face-${n}">${pips}</div>`)
+    .join("");
+  return `<div class="die die-${face} ${extraClass}"><div class="die-cube">${faces}</div></div>`;
+}
+
 function renderDiceReveal(teamState) {
   const roll = walk.roll ?? teamState.lastRoll ?? 1;
   return `
     <section class="panel action-panel dice-reveal-panel">
       <div class="dice-stage">
-        <div class="die die-${roll} die-reveal">
-          ${[1, 2, 3, 4, 5, 6].map((pip) => `<span class="pip pip-${pip}"></span>`).join("")}
-        </div>
+        ${renderDie(roll, "die-reveal")}
       </div>
       <p class="dice-reveal-text">Gegooid: <strong>${roll}</strong></p>
     </section>
@@ -869,9 +875,7 @@ function renderDicePanel(state, teamState) {
     <section class="panel action-panel dice-panel">
       ${teamState.pendingBonusRoll ? '<p class="bonus-roll-tag">Bonusworp — telt niet als normale beurt</p>' : ""}
       <div class="dice-stage">
-        <div class="die die-${face}">
-          ${[1, 2, 3, 4, 5, 6].map((pip) => `<span class="pip pip-${pip}"></span>`).join("")}
-        </div>
+        ${renderDie(face)}
       </div>
       ${teamState.lastRoll ? `
         <div class="roll-result-strip">
@@ -1323,6 +1327,8 @@ function renderPopup(state, teamState) {
   }
 
   const kindClass = `popup-${popup.kind ?? "info"}`;
+  const art = popupArt(popup, teamState);
+  const artImg = (cls) => (art ? `<img class="${cls}" src="${art.src}" alt="${esc(art.alt)}" />` : "");
 
   // Kans/Fonds: echte 3D-flipkaart (achterkant -> tik -> effect).
   if (popup.stage === "intro" && (popup.kind === "chance" || popup.kind === "fund")) {
@@ -1333,10 +1339,11 @@ function renderPopup(state, teamState) {
           <div class="flip-inner">
             <div class="flip-face flip-back">
               <span class="flip-kind">${esc(label)}</span>
-              <span class="flip-mark">?</span>
+              ${art ? artImg("flip-art") : '<span class="flip-mark">?</span>'}
               <span class="flip-hint">Tik om te draaien</span>
             </div>
             <div class="flip-face flip-front">
+              ${artImg("popup-art popup-art-small")}
               <span class="popup-kind">${esc(label)}</span>
               <h2>${esc(popup.title)}</h2>
               <div class="popup-body">${nl2br(popup.body ?? "")}</div>
@@ -1355,6 +1362,7 @@ function renderPopup(state, teamState) {
       <div class="popup-overlay">
         <div class="popup-card sfeer-card ${kindClass}">
           <span class="tape tape-tl"></span>
+          ${artImg("popup-art")}
           <span class="popup-kind">${esc(sfeerEyebrow(popup, teamState))}</span>
           <h2 class="sfeer-name">${esc(popup.title)}</h2>
           ${popup.body ? `<div class="popup-body sfeer-body">${nl2br(popup.body)}</div>` : ""}
@@ -1368,7 +1376,7 @@ function renderPopup(state, teamState) {
   return `
     <div class="popup-overlay">
       <div class="popup-card ${kindClass} ${hit ? "popup-hit" : ""}">
-        ${hit ? `<div class="hit-stamp">${hitStampLabel(popup)}</div>` : ""}
+        ${hit ? `<div class="hit-stamp">${hitStampLabel(popup)}</div>` : artImg("popup-art popup-art-small")}
         <span class="popup-kind">${esc(popupKindLabel(popup.kind))}</span>
         <h2>${esc(popup.title)}</h2>
         <div class="popup-body">${nl2br(popup.body ?? "")}</div>
@@ -1377,6 +1385,25 @@ function renderPopup(state, teamState) {
       </div>
     </div>
   `;
+}
+
+// Illustratie voor een pop-up: Kans/Fonds/Wisselstation krijgen hun eigen plaatje,
+// de aankomst-intro van andere vakken de illustratie van het vak waar je staat.
+function popupArt(popup, teamState) {
+  const byKind = {
+    chance: { src: "./assets/tiles/kans.png", alt: "Kans" },
+    fund: { src: "./assets/tiles/algemeen-fonds.png", alt: "Algemeen Fonds" },
+    swap: { src: "./assets/ns-logo-station.svg", alt: "Wisselstation" }
+  };
+  if (byKind[popup.kind]) {
+    return byKind[popup.kind];
+  }
+  if (popup.stage !== "intro") {
+    return null;
+  }
+  const tile = findTileById(teamState?.position);
+  const src = tile ? getTileImage(tile.id) : null;
+  return src ? { src, alt: tile.name } : null;
 }
 
 // Passend eyebrow-label voor de sfeer-intro, afgeleid van het vaktype.
@@ -1654,7 +1681,7 @@ app.addEventListener("click", (event) => {
       startGame(session.teamId);
       break;
     case "roll-dice":
-      rollDice(session.teamId);
+      rollDice(session.teamId, Number(target.dataset.roll) || null);
       break;
     case "confirm-task":
       feedback.confirm();

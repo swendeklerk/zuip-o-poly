@@ -1,14 +1,5 @@
-const rollDurationMs = 1100;
+const rollDurationMs = 1400;
 let activeRollTeamId = null;
-
-function randomFace() {
-  return Math.floor(Math.random() * 6) + 1;
-}
-
-function setDieFace(die, face) {
-  die.classList.remove("die-1", "die-2", "die-3", "die-4", "die-5", "die-6");
-  die.classList.add(`die-${face}`);
-}
 
 document.addEventListener(
   "click",
@@ -35,6 +26,12 @@ document.addEventListener(
     event.stopPropagation();
     event.stopImmediatePropagation();
 
+    // De uitkomst staat vast zodra je gooit; de steen tolt er naartoe en landt
+    // op precies die zijde. De store krijgt dezelfde waarde mee.
+    const roll = Math.floor(Math.random() * 6) + 1;
+    die.classList.remove("die-1", "die-2", "die-3", "die-4", "die-5", "die-6");
+    die.classList.add(`die-${roll}`);
+
     activeRollTeamId = teamId;
     const originalText = button.textContent;
     button.textContent = "Rollen...";
@@ -45,12 +42,11 @@ document.addEventListener(
     window.zuipFeedback?.diceStart();
     window.zuipFeedback?.diceRattle();
 
-    // Face-swaps versnellen aan het begin en vertragen naar het einde, zodat
-    // de steen 'uittolt' in plaats van mechanisch te knipperen.
+    // Rammel-ticks versnellen aan het begin en vertragen naar het einde, zodat
+    // de steen 'uittolt'. De 3D-kubus tolt zelf via CSS (dieTumble).
     let elapsed = 0;
     let faceTimer = null;
     const tick = () => {
-      setDieFace(die, randomFace());
       window.zuipFeedback?.diceRattle();
       const progress = Math.min(elapsed / rollDurationMs, 1);
       const delay = 40 + progress * progress * 150;
@@ -75,6 +71,7 @@ document.addEventListener(
         currentButton.disabled = false;
         currentButton.textContent = originalText;
         currentButton.dataset.rollAnimationReady = "true";
+        currentButton.dataset.roll = String(roll);
         currentButton.click();
       }
 
