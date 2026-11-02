@@ -62,3 +62,13 @@ Voor lokale Supabase-config vul je `config.js` in (zie `config.example.js`). Geb
 - Alle timers (opdracht, cel, wisselstation, aanval) zijn gebaseerd op een opgeslagen starttijd — een refresh of nieuw toestel reset nooit een timer.
 - Skippen kost altijd 2 vakjes, tenzij een power-up expliciet een gratis skip geeft.
 - Eén actieve sessie per team; een nieuw toestel neemt de bestaande sessie over zonder de spelstand te wijzigen.
+
+## Extra's (src/features/)
+
+Losse modules die de app uitbreiden zonder de spellogica te raken; een kapotte module wordt overgeslagen.
+
+- `eastEggs.js` — 25 verborgen geheimen met teller en overzicht (`?eggtime=2026-12-05T17:30` simuleert een datum).
+- `juice.js` — confetti, vuurwerk, bierschuim, soundboard (🍻) en optioneel schudden om te gooien.
+- `awards.js` — badges, kroegstats (📊), dagboek en kroegprijzen op het eindscherm.
+
+`?turbo=1` en `?reset=1` beginnen met een schoon spel en verdwijnen daarna uit de adresbalk. Spelcodes zijn 6 tekens. Beveiliging: zie `docs/security.md` en `supabase/schema.hardening.sql`.

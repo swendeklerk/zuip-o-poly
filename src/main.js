@@ -60,6 +60,41 @@ import { TILES } from "./data/tiles.js";
 
 const app = document.getElementById("app");
 
+// Elke her-render (bijv. door een poll van een ander team) bouwt #app opnieuw op.
+// Stond er al dezelfde popup open, dan komt de nieuwe direct in de eindstand en
+// blijft de scrollpositie staan, zodat hij niet een tweede keer inzoomt.
+(() => {
+  const native = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML");
+  const popupKey = () => {
+    const overlay = app.querySelector(".popup-overlay");
+    if (!overlay) {
+      return null;
+    }
+    const card = overlay.firstElementChild;
+    const cls = (card?.className ?? "").replace(/\bflipped\b/g, "").replace(/\s+/g, " ").trim();
+    return `${cls}|${overlay.querySelector("h2")?.textContent ?? ""}`;
+  };
+  const popupScroller = () => app.querySelector(".popup-overlay .popup-card, .popup-overlay .flip-front");
+  Object.defineProperty(app, "innerHTML", {
+    configurable: true,
+    get() {
+      return native.get.call(this);
+    },
+    set(html) {
+      const before = popupKey();
+      const scroll = before ? popupScroller()?.scrollTop ?? 0 : 0;
+      native.set.call(this, html);
+      if (before && before === popupKey()) {
+        app.querySelector(".popup-overlay")?.classList.add("is-static");
+        const scroller = popupScroller();
+        if (scroller) {
+          scroller.scrollTop = scroll;
+        }
+      }
+    }
+  });
+})();
+
 /* ------------------------------------------------------------------ */
 /* Lokale UI-status (geen spelstand — die leeft in de store)           */
 /* ------------------------------------------------------------------ */
@@ -69,6 +104,8 @@ const ui = {
   createModeId: DEFAULT_MODE_ID,
   createColorId: TEAM_COLORS[0].id,
   createPlayerCount: 3,
+  createTeamName: "",
+  joinTeamName: "",
   joinCode: "",
   joinFetchedState: null,
   joinColorId: null,
@@ -514,6 +551,14 @@ function render() {
     return;
   }
 
+  // Een open dialoog die niet meer past bij de status (bijv. na een aanval
+  // van een ander team) laten vervallen, zodat hij geen popups blokkeert.
+  if (ui.dialog?.type === "skip" && teamState.status !== TEAM_STATUS.TASK_ACTIVE) {
+    ui.dialog = null;
+  } else if (ui.dialog?.type === "choose" && teamState.status !== TEAM_STATUS.CHOOSING_TEAM) {
+    ui.dialog = null;
+  }
+
   maybeStartWalk(state, teamState);
   renderGame(state, teamState);
 }
@@ -526,7 +571,7 @@ function render() {
 // niet is toegevoegd.
 const HERO_IMG =
   '<img class="brand-logo" src="./assets/zuipopoly-hero.jpg" alt="Zuip-O-Poly" ' +
-  "onerror=\"this.onerror=null;this.src='./assets/zuipopoly-logo-full.svg';\" />";
+  'data-fallback-src="./assets/zuipopoly-logo-full.svg" />';
 
 function brandHeader(subtitle = "") {
   return `
@@ -641,7 +686,7 @@ function renderCreate() {
       <form class="panel entry-form" data-form="create-room">
         <label class="field">
           <span class="field-label">Teamnaam</span>
-          <input name="teamName" maxlength="24" required placeholder="Bijv. De Natte Neuzen" autocomplete="off" />
+          <input name="teamName" maxlength="24" required placeholder="Bijv. De Natte Neuzen" autocomplete="off" value="${esc(ui.createTeamName)}" />
         </label>
 
         <div class="field">
@@ -690,7 +735,7 @@ function renderJoin() {
         <form class="panel entry-form" data-form="join-fetch">
           <label class="field">
             <span class="field-label">Spelcode</span>
-            <input name="roomCode" maxlength="8" required placeholder="Bijv. K7X2P" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(ui.joinCode)}" />
+            <input name="roomCode" maxlength="8" required placeholder="Bijv. K7X2PQ" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(ui.joinCode)}" />
           </label>
           ${ui.joinError ? `<p class="form-error">${esc(ui.joinError)}</p>` : ""}
           <button class="button primary big" type="submit">Zoek spelkamer</button>
@@ -722,7 +767,7 @@ function renderJoin() {
         <form class="panel entry-form" data-form="join-room">
           <label class="field">
             <span class="field-label">Teamnaam</span>
-            <input name="teamName" maxlength="24" required placeholder="Bijv. Team Tapstoring" autocomplete="off" />
+            <input name="teamName" maxlength="24" required placeholder="Bijv. Team Tapstoring" autocomplete="off" value="${esc(ui.joinTeamName)}" />
           </label>
           <div class="field">
             <span class="field-label">Teamkleur</span>
@@ -747,7 +792,7 @@ function renderJoin() {
           <p class="panel-sub">Nieuwe telefoon of app opnieuw geopend? Neem jullie bestaande team over. De spelstand verandert niet.</p>
           <div class="resume-list">
             ${teams.map((team) => `
-              <button class="button ghost resume-button" data-action="resume-team" data-team-id="${team.id}" style="--team-accent:${findTeamColor(team.colorId).hex}">
+              <button class="button ghost resume-button" data-action="resume-team" data-team-id="${esc(team.id)}" style="--team-accent:${findTeamColor(team.colorId).hex}">
                 <span class="team-chip-dot"></span>${esc(team.name)}
               </button>
             `).join("")}
@@ -973,7 +1018,7 @@ function renderDicePanel(state, teamState) {
           <strong>${teamState.lastRoll}</strong>
         </div>
       ` : ""}
-      <button class="button primary big" data-action="roll-dice" data-team-id="${teamState.id}">
+      <button class="button primary big" data-action="roll-dice" data-team-id="${esc(teamState.id)}">
         Gooi dobbelsteen
       </button>
     </section>
@@ -1101,8 +1146,8 @@ function renderSpecialFlow(task) {
           <div class="special-row">
             <span>${esc(choice.name)}</span>
             ${task.dock17Revealed
-              ? `<strong>${choice.number} = ${esc(choice.drink)}</strong>`
-              : `<select data-change="dock17-number" data-choice-id="${choice.id}">
+              ? `<strong>${esc(choice.number)} = ${esc(choice.drink)}</strong>`
+              : `<select data-change="dock17-number" data-choice-id="${esc(choice.id)}">
                   <option value="">Kies…</option>
                   ${Array.from({ length: 17 }, (_, index) => index + 1)
                     .map((number) => `<option value="${number}" ${choice.number === number ? "selected" : ""}>${number}</option>`)
@@ -1142,7 +1187,7 @@ function renderSpecialFlow(task) {
           `).join("")}
         </div>
         ${next
-          ? `<button class="button gold" data-action="vanouds-spin" data-choice-id="${next.id}" ${wheelSpin.active ? "disabled" : ""}>Draai voor ${esc(next.name)}</button>`
+          ? `<button class="button gold" data-action="vanouds-spin" data-choice-id="${esc(next.id)}" ${wheelSpin.active ? "disabled" : ""}>Draai voor ${esc(next.name)}</button>`
           : '<p class="vanouds-done">Iedereen heeft gedraaid! 🍻</p>'}
       </div>
     `;
@@ -1166,7 +1211,7 @@ function renderTeamChoicePanel(state, teamState) {
       ${choosable.length ? `
         <div class="choice-list">
           ${choosable.map((team) => `
-            <button class="button ghost choice-button" data-action="ask-choose" data-team-id="${team.id}" style="--team-accent:${findTeamColor(team.colorId).hex}">
+            <button class="button ghost choice-button" data-action="ask-choose" data-team-id="${esc(team.id)}" style="--team-accent:${findTeamColor(team.colorId).hex}">
               <span class="team-chip-dot"></span>${esc(team.name)}
             </button>
           `).join("")}
@@ -1200,7 +1245,7 @@ function renderJailPanel(state, teamState) {
       <div class="wait-timer">${fmtTime(remaining)}</div>
       <p>Jullie zitten in de cel. Na de wachttijd volgt de strafopdracht.</p>
       ${jailFree ? `
-        <button class="button gold big" data-action="use-powerup" data-powerup-id="${jailFree.id}">Gebruik Celvrij</button>
+        <button class="button gold big" data-action="use-powerup" data-powerup-id="${esc(jailFree.id)}">Gebruik Celvrij</button>
       ` : ""}
     </section>
   `;
@@ -1245,8 +1290,8 @@ function renderPowerUps(state, teamState) {
               ${powerUp.type === "shield"
                 ? '<span class="powerup-auto">Automatisch</span>'
                 : powerUp.type === "skip_task" || powerUp.type === "skip_free"
-                  ? `<button class="button gold small" data-action="skip-with-powerup" data-powerup-id="${powerUp.id}" ${usable ? "" : "disabled"}>Inzetten</button>`
-                  : `<button class="button gold small" data-action="use-powerup" data-powerup-id="${powerUp.id}" ${usable ? "" : "disabled"}>Inzetten</button>`}
+                  ? `<button class="button gold small" data-action="skip-with-powerup" data-powerup-id="${esc(powerUp.id)}" ${usable ? "" : "disabled"}>Inzetten</button>`
+                  : `<button class="button gold small" data-action="use-powerup" data-powerup-id="${esc(powerUp.id)}" ${usable ? "" : "disabled"}>Inzetten</button>`}
             </div>
           `;
         }).join("")}
@@ -1381,7 +1426,7 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
           `;
         }).join("")}
         <div class="board-center">
-          <img src="./assets/zuipopoly-emblem.png" alt="" onerror="this.onerror=null;this.src='./assets/zuipopoly-board-logo.svg';" />
+          <img src="./assets/zuipopoly-emblem.png" alt="" data-fallback-src="./assets/zuipopoly-board-logo.svg" />
           <span class="board-center-pos">${centerLabel}</span>
         </div>
       </div>
@@ -1417,7 +1462,7 @@ function renderPopup(state, teamState) {
     return "";
   }
 
-  const kindClass = `popup-${popup.kind ?? "info"}`;
+  const kindClass = `popup-${esc(popup.kind ?? "info")}`;
   const art = popupArt(popup, teamState);
   const artImg = (cls) => (art ? `<img class="${cls}" src="${art.src}" alt="${esc(art.alt)}" />` : "");
 
@@ -1562,7 +1607,7 @@ function renderDialog(state, teamState) {
           <h2>Bevestigen</h2>
           <div class="popup-body">Weet je zeker dat jullie <strong>${esc(target.name)}</strong> willen kiezen?</div>
           <div class="stack-buttons">
-            <button class="button primary big" data-action="choose-confirm" data-team-id="${target.id}">Ja, kies ${esc(target.name)}</button>
+            <button class="button primary big" data-action="choose-confirm" data-team-id="${esc(target.id)}">Ja, kies ${esc(target.name)}</button>
             <button class="button ghost" data-action="dialog-cancel">Annuleren</button>
           </div>
         </div>
@@ -1619,7 +1664,7 @@ function skipPowerUpButtons(teamState) {
   return skipPowerUps
     .map(
       (powerUp) => `
-        <button class="button gold" data-action="skip-with-powerup" data-powerup-id="${powerUp.id}">
+        <button class="button gold" data-action="skip-with-powerup" data-powerup-id="${esc(powerUp.id)}">
           Skip met ${esc(powerUp.label)} (geen straf)
         </button>
       `
@@ -1676,6 +1721,21 @@ function renderEnded(state, teamState) {
 /* ------------------------------------------------------------------ */
 /* Events                                                              */
 /* ------------------------------------------------------------------ */
+
+// Afbeelding-terugval zonder inline onerror-handler (past binnen de strikte CSP).
+// Fout-events borrelen niet op, dus luisteren we in de capture-fase.
+app.addEventListener(
+  "error",
+  (event) => {
+    const img = event.target;
+    const fallback = img instanceof HTMLImageElement ? img.dataset.fallbackSrc : null;
+    if (fallback && !img.dataset.fallbackUsed) {
+      img.dataset.fallbackUsed = "1";
+      img.src = fallback;
+    }
+  },
+  true
+);
 
 app.addEventListener("click", (event) => {
   const target = event.target.closest("[data-action]");
@@ -1941,6 +2001,7 @@ app.addEventListener("submit", async (event) => {
       return;
     }
     ui.createError = "";
+    ui.createTeamName = "";
     connectSync();
     render();
     return;
@@ -1974,9 +2035,25 @@ app.addEventListener("submit", async (event) => {
       return;
     }
     ui.joinError = "";
+    ui.joinTeamName = "";
     ui.joinFetchedState = null;
     connectSync();
     render();
+  }
+});
+
+// Teamnaam onthouden zodat die niet verdwijnt als er een kleur, spelstand of
+// spelersaantal wordt gekozen (die acties renderen het formulier opnieuw).
+app.addEventListener("input", (event) => {
+  const input = event.target;
+  if (input?.name !== "teamName") {
+    return;
+  }
+  const formType = input.closest("[data-form]")?.dataset.form;
+  if (formType === "create-room") {
+    ui.createTeamName = input.value;
+  } else if (formType === "join-room") {
+    ui.joinTeamName = input.value;
   }
 });
 
@@ -2075,6 +2152,18 @@ window.setInterval(() => {
 const startParams = new URLSearchParams(window.location.search);
 if (startParams.get("reset") === "1" || startParams.get("turbo") === "1") {
   clearSession();
+}
+// Haal deze start-parameters uit de adresbalk, anders wist elke refresh het
+// lopende spel (en kan de Turbo-knop niet meer uitgezet worden).
+if (["reset", "turbo"].some((key) => startParams.has(key))) {
+  try {
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete("reset");
+    cleanUrl.searchParams.delete("turbo");
+    window.history.replaceState(null, "", cleanUrl.toString());
+  } catch {
+    // adresbalk niet aanpasbaar: negeren
+  }
 }
 
 if (TURBO) {

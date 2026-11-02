@@ -10,7 +10,11 @@ let settings = loadSettings();
 function loadSettings() {
   try {
     const stored = JSON.parse(window.localStorage.getItem(SETTINGS_KEY) || "{}");
-    return { sound: true, vibration: true, ...stored };
+    // Alleen bekende booleans overnemen (geen willekeurige keys uit localStorage).
+    return {
+      sound: typeof stored?.sound === "boolean" ? stored.sound : true,
+      vibration: typeof stored?.vibration === "boolean" ? stored.vibration : true
+    };
   } catch {
     return { sound: true, vibration: true };
   }

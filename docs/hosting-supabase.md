@@ -17,7 +17,7 @@ Deze repo heeft nu:
 
 1. Maak later een Supabase project aan.
 2. Open SQL Editor.
-3. Draai `supabase/schema.sql`.
+3. Draai `supabase/schema.sql` en daarna `supabase/schema.hardening.sql` (beveiliging, zie `docs/security.md`).
 4. Zet realtime aan voor `public.game_states`.
 5. Vul later de frontend-config in.
 

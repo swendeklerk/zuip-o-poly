@@ -1,0 +1,758 @@
+/* Awards, achievements & kroegstats. Alles met prefix .aw- */
+
+/* ---------- 📊-knop ---------- */
+.aw-open {
+  position: fixed;
+  right: 12px;
+  bottom: 84px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 1.25rem;
+  line-height: 1;
+  color: var(--text, #f0eef4);
+  background: var(--surface2, #1a1a24);
+  border: 1px solid rgba(255, 214, 0, 0.35);
+  border-radius: 50%;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 160ms ease, transform 120ms ease;
+}
+
+.aw-open[hidden] {
+  display: none;
+}
+
+.aw-open:active {
+  transform: scale(0.92);
+}
+
+.aw-open.is-covered {
+  opacity: 0;
+  pointer-events: none !important;
+}
+
+.aw-open-dot {
+  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--red-bright, #ff2d44);
+  border: 2px solid var(--surface2, #1a1a24);
+}
+
+.aw-open.has-new .aw-open-dot {
+  display: block;
+}
+
+/* ---------- badge-toast ---------- */
+.aw-badge-toast {
+  position: fixed;
+  z-index: 10;
+  top: calc(max(10px, env(safe-area-inset-top)) + 54px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 400px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  text-align: left;
+  color: var(--text, #f0eef4);
+  font-family: var(--font-body, system-ui, sans-serif);
+  background: linear-gradient(135deg, #2a2410, var(--surface2, #1a1a24) 60%);
+  border: 1px solid var(--gold, #ffd600);
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px rgba(255, 214, 0, 0.15), 0 12px 32px rgba(0, 0, 0, 0.6), 0 0 26px rgba(255, 214, 0, 0.22);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.aw-badge-toast.is-leaving {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-14px);
+  transition: opacity 400ms ease, transform 400ms ease;
+}
+
+.aw-bt-icon {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.9rem;
+  border-radius: 50%;
+  background: rgba(255, 214, 0, 0.12);
+  border: 2px solid var(--gold, #ffd600);
+}
+
+.aw-bt-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.aw-bt-eyebrow {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--gold, #ffd600);
+}
+
+.aw-bt-name {
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.45rem;
+  letter-spacing: 1px;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.aw-bt-desc {
+  font-size: 0.74rem;
+  line-height: 1.3;
+  color: var(--text-muted, #8a8896);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aw-badge-toast {
+    animation: awToastIn 480ms cubic-bezier(0.2, 1.3, 0.35, 1) both;
+  }
+
+  .aw-badge-toast::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.22) 50%, transparent 65%);
+    transform: translateX(-120%);
+    animation: awShine 1200ms 380ms ease-out 1 both;
+    pointer-events: none;
+  }
+
+  .aw-bt-icon {
+    animation: awIconPop 700ms 200ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  }
+}
+
+@keyframes awToastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-24px) scale(0.9); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+@keyframes awShine {
+  to { transform: translateX(120%); }
+}
+
+@keyframes awIconPop {
+  0% { transform: scale(0.3) rotate(-25deg); }
+  60% { transform: scale(1.25) rotate(8deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+/* ---------- overlay ---------- */
+.aw-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.74);
+  overflow: hidden;
+}
+
+.aw-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  background: var(--surface, #111116);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-bottom: 0;
+  border-top: 3px solid var(--team-accent, var(--gold, #ffd600));
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.6);
+  color: var(--text, #f0eef4);
+  font-family: var(--font-body, system-ui, sans-serif);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aw-overlay {
+    animation: awFade 180ms ease both;
+  }
+
+  .aw-sheet {
+    animation: awSheetUp 260ms cubic-bezier(0.2, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes awFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes awSheetUp {
+  from { transform: translateY(40px); }
+  to { transform: translateY(0); }
+}
+
+.aw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 6px;
+}
+
+.aw-head-text {
+  min-width: 0;
+}
+
+.aw-eyebrow {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.64rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold, #ffd600);
+}
+
+.aw-title {
+  margin: 0;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.7rem;
+  font-weight: 400;
+  letter-spacing: 1px;
+  line-height: 1.05;
+  color: var(--team-accent, var(--text, #f0eef4));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aw-close {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 1.1rem;
+  color: var(--text-muted, #8a8896);
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.aw-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px 16px 10px;
+}
+
+.aw-tabs button {
+  min-height: 44px;
+  padding: 6px 2px;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.05rem;
+  letter-spacing: 1.2px;
+  color: var(--text-muted, #8a8896);
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.aw-tabs button.is-active {
+  color: #111;
+  background: var(--gold, #ffd600);
+  border-color: var(--gold, #ffd600);
+}
+
+.aw-body {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.aw-rankline {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-rankline b {
+  color: var(--gold, #ffd600);
+}
+
+.aw-empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-foot {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-dim, #4a4858);
+}
+
+/* ---------- stats ---------- */
+.aw-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.aw-stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-radius: 12px;
+  text-align: center;
+}
+
+.aw-stat-v {
+  max-width: 100%;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.65rem;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  color: var(--text, #f0eef4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aw-stat-l {
+  max-width: 100%;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.56rem;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a8896);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aw-card {
+  padding: 12px;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-radius: 14px;
+}
+
+.aw-h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.1rem;
+  font-weight: 400;
+  letter-spacing: 1.2px;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-dist {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  height: 104px;
+}
+
+.aw-dist-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.aw-dist-n,
+.aw-dist-f {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-dist-f {
+  color: var(--text, #f0eef4);
+  font-weight: 700;
+}
+
+.aw-dist-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.aw-dist-bar {
+  width: 100%;
+  border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(180deg, var(--gold, #ffd600), #b8860b);
+}
+
+.aw-dist-col:last-child .aw-dist-bar {
+  background: linear-gradient(180deg, var(--red-bright, #ff2d44), var(--red, #e8001d));
+}
+
+/* ---------- badges ---------- */
+.aw-badges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.aw-badge {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 8px 10px;
+  text-align: center;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid rgba(255, 214, 0, 0.28);
+  border-radius: 14px;
+}
+
+.aw-badge.is-fresh {
+  border-color: var(--gold, #ffd600);
+  box-shadow: 0 0 14px rgba(255, 214, 0, 0.14);
+}
+
+.aw-badge.is-locked {
+  border-color: var(--border, rgba(255, 255, 255, 0.07));
+  background: var(--surface, #111116);
+}
+
+.aw-badge.is-locked .aw-badge-icon {
+  filter: grayscale(1);
+  opacity: 0.45;
+}
+
+.aw-badge-icon {
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.aw-badge-name {
+  max-width: 100%;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.15rem;
+  letter-spacing: 0.8px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.aw-badge.is-locked .aw-badge-name {
+  color: var(--text-dim, #4a4858);
+}
+
+.aw-badge-desc {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: var(--text-muted, #8a8896);
+  overflow-wrap: anywhere;
+}
+
+.aw-badge.is-locked .aw-badge-desc {
+  color: var(--text-dim, #4a4858);
+}
+
+.aw-badge-tag {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.5rem;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #111;
+  background: var(--gold, #ffd600);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+/* ---------- tussenstand ---------- */
+.aw-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aw-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-left: 3px solid var(--team-accent, #f0eef4);
+  border-radius: 10px;
+}
+
+.aw-row.is-own {
+  background: var(--surface3, #22222e);
+}
+
+.aw-row-place {
+  flex: none;
+  width: 22px;
+  text-align: center;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.3rem;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-row:first-child .aw-row-place {
+  color: var(--gold, #ffd600);
+}
+
+.aw-row-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--team-accent, #f0eef4);
+}
+
+.aw-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.aw-row-name {
+  font-weight: 700;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aw-row-sub {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  color: var(--text-muted, #8a8896);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aw-row-status {
+  flex: none;
+  max-width: 76px;
+  font-size: 0.6rem;
+  line-height: 1.15;
+  text-align: right;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-row-status.dot-green { color: #00d464; }
+.aw-row-status.dot-yellow { color: var(--gold, #ffd600); }
+.aw-row-status.dot-red { color: var(--red-bright, #ff2d44); }
+.aw-row-status.dot-purple { color: #c800ff; }
+
+/* ---------- dagboek ---------- */
+.aw-diary {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aw-diary-item {
+  display: grid;
+  grid-template-columns: 40px 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-left: 3px solid var(--team-accent, #4a4858);
+  border-radius: 10px;
+}
+
+.aw-diary-time {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem;
+  line-height: 1.6;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-diary-icon {
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.aw-diary-text {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.aw-diary-text b {
+  color: var(--text, #f0eef4);
+}
+
+/* ---------- eindscherm: De Kroegprijzen ---------- */
+.aw-awards {
+  margin: 0;
+}
+
+.aw-awards h2 {
+  margin: 0;
+}
+
+.aw-award-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.aw-award {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-left: 3px solid var(--team-accent, #f0eef4);
+  border-radius: 12px;
+}
+
+.aw-award-icon {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.aw-award-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.aw-award-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6rem;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--gold, #ffd600);
+}
+
+.aw-award-team {
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.4rem;
+  letter-spacing: 1px;
+  line-height: 1.05;
+  color: var(--team-accent, var(--text, #f0eef4));
+  overflow-wrap: anywhere;
+}
+
+.aw-award-cap {
+  font-size: 0.74rem;
+  line-height: 1.3;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-mine {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+}
+
+.aw-mine-title {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.64rem;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--text-muted, #8a8896);
+}
+
+.aw-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aw-chip {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  background: var(--surface2, #1a1a24);
+  border: 1px solid rgba(255, 214, 0, 0.3);
+  border-radius: 50%;
+}
+
+.aw-share {
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .aw-awards.is-in .aw-award {
+    animation: awAwardIn 420ms cubic-bezier(0.2, 1, 0.3, 1) both;
+  }
+
+  .aw-awards.is-in .aw-award:nth-child(2) { animation-delay: 70ms; }
+  .aw-awards.is-in .aw-award:nth-child(3) { animation-delay: 140ms; }
+  .aw-awards.is-in .aw-award:nth-child(4) { animation-delay: 210ms; }
+  .aw-awards.is-in .aw-award:nth-child(5) { animation-delay: 280ms; }
+  .aw-awards.is-in .aw-award:nth-child(n + 6) { animation-delay: 350ms; }
+}
+
+@keyframes awAwardIn {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}

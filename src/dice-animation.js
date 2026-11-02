@@ -1,5 +1,11 @@
 const isTurbo = (() => {
   try {
+    // ?turbo=1/0 in de URL wint van de opgeslagen waarde (die wordt pas later
+    // door de modules weggeschreven).
+    const param = new URLSearchParams(window.location.search).get("turbo");
+    if (param === "1" || param === "0") {
+      return param === "1";
+    }
     return window.localStorage.getItem("zuipopoly.turbo") === "1";
   } catch {
     return false;

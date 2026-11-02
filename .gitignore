@@ -13,3 +13,16 @@ UPLOAD_NAAR_GITHUB/
 
 # Testbuild om te uploaden
 *.zip
+
+# Geheimen en lokale omgevingen: nooit committen.
+# De Supabase service_role-key hoort nergens in deze repo of build.
+.env.*
+!.env.example
+*.env
+config.local.js
+.vercel/
+node_modules/
+supabase/.temp/
+supabase/.branches/
+*.pem
+*.key

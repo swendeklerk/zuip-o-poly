@@ -71,7 +71,14 @@ export function getSession() {
     return null;
   }
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Alleen de drie bekende velden, gevalideerd (geen willekeurige keys of typen).
+    const roomCode = normalizeRoomCode(parsed?.roomCode);
+    const teamId = cleanId(parsed?.teamId);
+    if (!ROOM_CODE_PATTERN.test(roomCode) || !teamId) {
+      return null;
+    }
+    return { roomCode, teamId, sessionId: cleanId(parsed?.sessionId, "") };
   } catch {
     return null;
   }
@@ -140,39 +147,384 @@ function createRoomState({ roomCode, modeId, starterTeamId }) {
   };
 }
 
-function normalizeTeam(input) {
-  const base = createTeamState({
-    id: input?.id ?? createId("team"),
-    name: input?.name ?? "Team",
-    colorId: input?.colorId ?? TEAM_COLORS[0].id,
-    playerCount: input?.playerCount ?? 3
+/* ------------------------------------------------------------------ */
+/* Validatie van niet-vertrouwde state (remote, localStorage)          */
+/* ------------------------------------------------------------------ */
+// State komt uit Supabase of localStorage en kan door een kwaadwillende
+// speler zijn aangepast. Alles wat de UI later in HTML/attributen zet wordt
+// hier begrensd en gewhitelist: ids, getallen, statussen, tekstlengtes.
+
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+const ID_PATTERN = /^[A-Za-z0-9_.:-]{1,80}$/;
+const ROOM_CODE_PATTERN = /^[A-Z0-9]{3,12}$/;
+const WORD_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+const MAX_TEXT = 2000;
+const MAX_NAME = 40;
+const MAX_DEPTH = 8;
+const MAX_ARRAY = 100;
+const MAX_KEYS = 80;
+const MAX_TIMESTAMP = 4102444800000; // 1 jan 2100
+const TEAM_STATUS_VALUES = new Set(Object.values(TEAM_STATUS));
+const GAME_PHASE_VALUES = new Set(Object.values(GAME_PHASE));
+
+// Diepe kopie zonder gevaarlijke keys, met begrensde diepte/lengte/aantallen.
+// Gedraagt zich als een JSON-roundtrip: undefined/functies verdwijnen.
+function sanitizeValue(value, depth = 0) {
+  switch (typeof value) {
+    case "string":
+      return value.length > MAX_TEXT ? value.slice(0, MAX_TEXT) : value;
+    case "number":
+      return Number.isFinite(value) ? value : 0;
+    case "boolean":
+      return value;
+    case "object":
+      break;
+    default:
+      return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (depth >= MAX_DEPTH) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, MAX_ARRAY).map((item) => {
+      const clean = sanitizeValue(item, depth + 1);
+      return clean === undefined ? null : clean;
+    });
+  }
+  const out = {};
+  let count = 0;
+  for (const key of Object.keys(value)) {
+    if (FORBIDDEN_KEYS.has(key)) {
+      continue;
+    }
+    const clean = sanitizeValue(value[key], depth + 1);
+    if (clean === undefined) {
+      continue;
+    }
+    count += 1;
+    if (count > MAX_KEYS) {
+      break;
+    }
+    out[key] = clean;
+  }
+  return out;
+}
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function cleanInt(value, min, max, fallback) {
+  const number = Number(value);
+  if (value === null || value === "" || typeof value === "boolean" || !Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(number), min), max);
+}
+
+function cleanTimestamp(value, fallback = null) {
+  const number = Number(value);
+  if (value === null || value === undefined || typeof value === "boolean" || !Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.min(Math.max(Math.trunc(number), 0), MAX_TIMESTAMP);
+}
+
+function cleanText(value, max, fallback = "") {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  // Stuurtekens (behalve tab en nieuwe regel) eruit; lengte begrenzen.
+  return value.replace(/[\u0000-\u0008\u000B-\u001F\u007F]/g, "").slice(0, max);
+}
+
+function cleanId(value, fallback = null) {
+  return typeof value === "string" && ID_PATTERN.test(value) && !FORBIDDEN_KEYS.has(value)
+    ? value
+    : fallback;
+}
+
+function cleanWord(value, fallback = undefined) {
+  return typeof value === "string" && WORD_PATTERN.test(value) ? value : fallback;
+}
+
+function cleanTeamName(value, fallback = "Team") {
+  const name = cleanText(value, MAX_NAME).replace(/\s+/g, " ").trim();
+  return name || fallback;
+}
+
+// Optionele velden: alleen aanpassen als ze er zijn (anders blijft de vorm gelijk).
+function setIfPresent(target, key, cleaner) {
+  if (Object.prototype.hasOwnProperty.call(target, key)) {
+    const cleaned = cleaner(target[key]);
+    if (cleaned === undefined) {
+      delete target[key];
+    } else {
+      target[key] = cleaned;
+    }
+  }
+}
+
+function sanitizeChoiceList(list, extraCleaner) {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const choices = [];
+  list.slice(0, 8).forEach((item, index) => {
+    if (!isPlainObject(item)) {
+      return;
+    }
+    const choice = sanitizeValue(item);
+    choice.id = cleanId(choice.id, `player_${index + 1}`);
+    choice.name = cleanText(choice.name, MAX_NAME, `Speler ${index + 1}`);
+    extraCleaner(choice);
+    choices.push(choice);
   });
-  const team = { ...base, ...input };
-  team.pendingTasks = Array.isArray(team.pendingTasks) ? team.pendingTasks : [];
-  team.savedPowerUps = Array.isArray(team.savedPowerUps) ? team.savedPowerUps : [];
-  team.oncePerTeamCardIds = Array.isArray(team.oncePerTeamCardIds) ? team.oncePerTeamCardIds : [];
-  team.teamSyncRevision = Number.isFinite(team.teamSyncRevision) ? team.teamSyncRevision : 0;
-  team.teamSyncUpdatedAt = Number.isFinite(team.teamSyncUpdatedAt) ? team.teamSyncUpdatedAt : 0;
+  return choices;
+}
+
+function sanitizeTask(input) {
+  if (!isPlainObject(input)) {
+    return null;
+  }
+  const task = sanitizeValue(input);
+  setIfPresent(task, "title", (v) => cleanText(v, 160));
+  setIfPresent(task, "body", (v) => cleanText(v, MAX_TEXT));
+  setIfPresent(task, "popup", (v) => cleanText(v, MAX_TEXT));
+  setIfPresent(task, "rules", (v) => cleanText(v, MAX_TEXT));
+  setIfPresent(task, "tileName", (v) => cleanText(v, 80));
+  setIfPresent(task, "location", (v) => cleanText(v, 120));
+  setIfPresent(task, "notifyActorText", (v) => cleanText(v, MAX_TEXT));
+  setIfPresent(task, "notifyTargetText", (v) => cleanText(v, MAX_TEXT));
+  setIfPresent(task, "powerUpLabel", (v) => cleanText(v, 80));
+  setIfPresent(task, "presentation", (v) => cleanWord(v));
+  setIfPresent(task, "effectType", (v) => cleanWord(v));
+  setIfPresent(task, "savedPowerUpType", (v) => cleanWord(v));
+  setIfPresent(task, "cardId", (v) => cleanId(v));
+  setIfPresent(task, "delta", (v) => cleanInt(v, -80, 80, 0));
+  setIfPresent(task, "waitSeconds", (v) => (v === null ? null : cleanInt(v, 0, 7200, 0)));
+  setIfPresent(task, "timerSeconds", (v) => cleanInt(v, 0, 3600, 0));
+  setIfPresent(task, "startedAt", (v) => cleanTimestamp(v));
+  setIfPresent(task, "pendingTileId", (v) => cleanInt(v, 1, GAME_CONFIG.boardSize, 1));
+  setIfPresent(task, "skippable", (v) => Boolean(v));
+  setIfPresent(task, "placeholder", (v) => Boolean(v));
+  setIfPresent(task, "oncePerTeam", (v) => Boolean(v));
+  setIfPresent(task, "dock17Revealed", (v) => Boolean(v));
+  setIfPresent(task, "vanOudsComplete", (v) => Boolean(v));
+  setIfPresent(task, "bonusPowerUp", (v) =>
+    isPlainObject(v)
+      ? { type: cleanWord(v.type, "unknown"), label: cleanText(v.label, 80, "Power-up") }
+      : null
+  );
+
+  if (task.specialFlow !== "dock17" && task.specialFlow !== "vanOuds") {
+    delete task.specialFlow;
+  }
+  if (task.specialFlow === "dock17") {
+    task.dock17Choices = sanitizeChoiceList(task.dock17Choices, (choice) => {
+      choice.number = choice.number === null ? null : cleanInt(choice.number, 1, 17, null);
+      choice.drink = cleanText(choice.drink, 80);
+    });
+  } else {
+    delete task.dock17Choices;
+  }
+  if (task.specialFlow === "vanOuds") {
+    task.vanOudsChoices = sanitizeChoiceList(task.vanOudsChoices, (choice) => {
+      choice.result = cleanText(choice.result, 80);
+      setIfPresent(choice, "resultIndex", (v) => cleanInt(v, 0, 99, 0));
+    });
+  } else {
+    delete task.vanOudsChoices;
+  }
+  return task;
+}
+
+function sanitizePopup(input) {
+  if (!isPlainObject(input)) {
+    return null;
+  }
+  const popup = sanitizeValue(input);
+  setIfPresent(popup, "title", (v) => cleanText(v, 160));
+  setIfPresent(popup, "body", (v) => cleanText(v, MAX_TEXT));
+  setIfPresent(popup, "blockedChoiceMessage", (v) => cleanText(v, 300));
+  setIfPresent(popup, "cardId", (v) => cleanId(v));
+  // kind belandt in een class-attribuut: alleen veilige woorden.
+  setIfPresent(popup, "kind", (v) => cleanWord(v, "info"));
+  setIfPresent(popup, "stage", (v) => (v === "intro" || v === "detail" ? v : "detail"));
+  return popup;
+}
+
+function sanitizeLastMove(input) {
+  if (!isPlainObject(input)) {
+    return null;
+  }
+  const move = sanitizeValue(input);
+  setIfPresent(move, "roll", (v) => (v === null ? null : cleanInt(v, 1, 6, null)));
+  setIfPresent(move, "from", (v) => cleanInt(v, 1, GAME_CONFIG.boardSize, 1));
+  setIfPresent(move, "to", (v) => cleanInt(v, 1, GAME_CONFIG.boardSize, 1));
+  setIfPresent(move, "roundsGained", (v) => cleanInt(v, 0, 50, 0));
+  setIfPresent(move, "crossedStart", (v) => Boolean(v));
+  setIfPresent(move, "tileName", (v) => cleanText(v, 80));
+  setIfPresent(move, "movedAt", (v) => cleanTimestamp(v, 0));
+  setIfPresent(move, "source", (v) => cleanWord(v, "move"));
+  setIfPresent(move, "steps", (v) => (v === null ? null : cleanInt(v, -80, 80, null)));
+  return move;
+}
+
+function sanitizeSavedPowerUps(list) {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const result = [];
+  for (const item of list.slice(0, 30)) {
+    if (!isPlainObject(item)) {
+      continue;
+    }
+    const id = cleanId(item.id);
+    const type = cleanWord(item.type);
+    if (!id || !type) {
+      continue;
+    }
+    const powerUp = sanitizeValue(item);
+    powerUp.id = id;
+    powerUp.type = type;
+    powerUp.cardId = cleanId(item.cardId, "");
+    powerUp.title = cleanText(item.title, 120);
+    powerUp.label = cleanText(item.label, 80, powerUp.title);
+    powerUp.body = cleanText(item.body, MAX_TEXT);
+    result.push(powerUp);
+  }
+  return result;
+}
+
+function sanitizePendingTasks(list) {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const result = [];
+  for (const item of list.slice(0, 20)) {
+    const task = sanitizeTask(item?.task);
+    if (task) {
+      result.push({ kind: cleanWord(item.kind, "task"), task });
+    }
+  }
+  return result;
+}
+
+function normalizeTeam(input) {
+  const raw = isPlainObject(input) ? input : {};
+  const id = cleanId(raw.id) ?? createId("team");
+  const base = createTeamState({
+    id,
+    name: cleanTeamName(raw.name),
+    colorId: findTeamColor(raw.colorId).id,
+    playerCount: raw.playerCount ?? 3
+  });
+  // Onbekende extra velden blijven (gesaneerd) bewaard; bekende velden worden
+  // hieronder streng gevalideerd en overschreven.
+  const team = { ...base, ...sanitizeValue(raw) };
+  team.id = id;
+  team.name = cleanTeamName(raw.name);
+  team.colorId = findTeamColor(raw.colorId).id;
+  team.playerCount = cleanInt(raw.playerCount, 1, 8, base.playerCount);
+  team.joinedAt = cleanTimestamp(raw.joinedAt, base.joinedAt);
+  team.activeSessionId = cleanId(raw.activeSessionId, null);
+  team.status = TEAM_STATUS_VALUES.has(raw.status) ? raw.status : base.status;
+  team.position = cleanInt(raw.position, 1, GAME_CONFIG.boardSize, base.position);
+  team.completedRounds = cleanInt(raw.completedRounds, 0, 1000, 0);
+  team.positionReachedAt = cleanTimestamp(raw.positionReachedAt, base.positionReachedAt);
+  team.normalTurnsUsed = cleanInt(raw.normalTurnsUsed, 0, 1000, 0);
+  team.pendingBonusRoll = Boolean(raw.pendingBonusRoll);
+  team.lastRoll = cleanInt(raw.lastRoll, 1, 6, null);
+  team.lastMove = sanitizeLastMove(raw.lastMove);
+  team.lastStreetTileId = cleanInt(raw.lastStreetTileId, 1, GAME_CONFIG.boardSize, null);
+  team.currentTask = sanitizeTask(raw.currentTask);
+  team.pendingTasks = sanitizePendingTasks(raw.pendingTasks);
+  team.activePopup = sanitizePopup(raw.activePopup);
+  team.waitUntil = cleanTimestamp(raw.waitUntil, null);
+  team.jailUntil = cleanTimestamp(raw.jailUntil, null);
+  team.finishedAt = cleanTimestamp(raw.finishedAt, null);
+  team.savedPowerUps = sanitizeSavedPowerUps(raw.savedPowerUps);
+  team.oncePerTeamCardIds = Array.isArray(raw.oncePerTeamCardIds)
+    ? raw.oncePerTeamCardIds.slice(0, 50).map((value) => cleanId(value)).filter(Boolean)
+    : [];
+  team.teamSyncRevision = cleanInt(raw.teamSyncRevision, 0, 1e9, 0);
+  team.teamSyncUpdatedAt = cleanTimestamp(raw.teamSyncUpdatedAt, 0);
   return team;
 }
 
 function normalizeState(input) {
-  if (!input?.roomCode) {
+  if (!isPlainObject(input)) {
     return null;
   }
-  const state = {
-    ...createRoomState({
-      roomCode: input.roomCode,
-      modeId: input.modeId,
-      starterTeamId: input.starterTeamId
-    }),
-    ...input,
-    teams: {}
-  };
-  state.syncRevision = Number.isFinite(input.syncRevision) ? input.syncRevision : 0;
-  state.syncUpdatedAt = Number.isFinite(input.syncUpdatedAt) ? input.syncUpdatedAt : 0;
-  state.eventLog = Array.isArray(input.eventLog) ? input.eventLog.slice(-60) : [];
-  for (const [teamId, teamState] of Object.entries(input.teams ?? {})) {
+  const roomCode = normalizeRoomCode(input.roomCode);
+  if (!ROOM_CODE_PATTERN.test(roomCode)) {
+    return null;
+  }
+  const state = createRoomState({
+    roomCode,
+    modeId: input.modeId,
+    starterTeamId: cleanId(input.starterTeamId, null)
+  });
+  // Onbekende extra top-level velden blijven (gesaneerd) bewaard.
+  for (const key of Object.keys(input)) {
+    if (key === "teams" || key === "eventLog" || FORBIDDEN_KEYS.has(key)) {
+      continue;
+    }
+    const clean = sanitizeValue(input[key]);
+    if (clean !== undefined) {
+      state[key] = clean;
+    }
+  }
+  state.roomCode = roomCode;
+  state.version = 2;
+  state.modeId = findGameMode(input.modeId)?.id ?? DEFAULT_MODE_ID;
+  state.starterTeamId = cleanId(input.starterTeamId, null);
+  state.phase = GAME_PHASE_VALUES.has(input.phase) ? input.phase : GAME_PHASE.LOBBY;
+  state.createdAt = cleanTimestamp(input.createdAt, now());
+  state.countdownStartedAt = cleanTimestamp(input.countdownStartedAt, null);
+  state.gameStartedAt = cleanTimestamp(input.gameStartedAt, null);
+  state.endedAt = cleanTimestamp(input.endedAt, null);
+  state.syncRevision = cleanInt(input.syncRevision, 0, 1e9, 0);
+  state.syncUpdatedAt = cleanTimestamp(input.syncUpdatedAt, 0);
+  // De testmodus (teleporteren, kaarten kiezen) bestaat alleen lokaal; een
+  // remote of aangepaste state mag dit nooit voor een echte spelkamer aanzetten.
+  if (input.isDemo === true && roomCode === DEMO_ROOM_CODE) {
+    state.isDemo = true;
+  } else {
+    delete state.isDemo;
+  }
+
+  state.eventLog = Array.isArray(input.eventLog)
+    ? input.eventLog
+        .slice(-60)
+        .filter(isPlainObject)
+        .map((event) => ({
+          at: cleanTimestamp(event.at, 0),
+          text: cleanText(event.text, 300)
+        }))
+    : [];
+
+  state.teams = {};
+  const teamEntries = isPlainObject(input.teams) ? Object.entries(input.teams) : [];
+  const validEntries = teamEntries.filter(
+    ([teamId, teamState]) =>
+      ID_PATTERN.test(teamId) &&
+      !FORBIDDEN_KEYS.has(teamId) &&
+      !/^\d+$/.test(teamId) &&
+      isPlainObject(teamState)
+  );
+  // Meer dan het maximum aantal teams is nooit legitiem: houd de oudst gejoinde.
+  const limited =
+    validEntries.length > GAME_CONFIG.maxTeams
+      ? [...validEntries]
+          .sort((a, b) => (Number(a[1].joinedAt) || 0) - (Number(b[1].joinedAt) || 0))
+          .slice(0, GAME_CONFIG.maxTeams)
+      : validEntries;
+  for (const [teamId, teamState] of limited) {
     state.teams[teamId] = normalizeTeam({ ...teamState, id: teamId });
   }
   return state;
@@ -296,6 +648,9 @@ function applyRemoteState(remoteState) {
   const remote = normalizeState(remoteState);
   const session = getSession();
   if (!remote || !session?.roomCode || normalizeRoomCode(remote.roomCode) !== normalizeRoomCode(session.roomCode)) {
+    return false;
+  }
+  if (remote.roomCode === DEMO_ROOM_CODE) {
     return false;
   }
 
@@ -441,7 +796,7 @@ function logEvent(state, text) {
 /* ------------------------------------------------------------------ */
 
 export function createRoom({ modeId, teamName, colorId, playerCount }) {
-  const name = String(teamName ?? "").trim();
+  const name = cleanTeamName(teamName, "");
   if (!name) {
     return { ok: false, message: "Kies eerst een teamnaam." };
   }
@@ -479,7 +834,8 @@ export async function fetchRoom(roomCode) {
     }
   }
 
-  const remoteState = await loadRemoteGameState(code);
+  // De testkamer bestaat alleen lokaal en wordt nooit van remote geladen.
+  const remoteState = code === DEMO_ROOM_CODE ? null : await loadRemoteGameState(code);
   const state = remoteState ? normalizeState(remoteState) : null;
   if (!state) {
     return {
@@ -493,7 +849,7 @@ export async function fetchRoom(roomCode) {
 
 export function joinRoom({ roomCode, teamName, colorId, playerCount, roomState }) {
   const code = normalizeRoomCode(roomCode);
-  const name = String(teamName ?? "").trim();
+  const name = cleanTeamName(teamName, "");
   if (!name) {
     return { ok: false, message: "Kies eerst een teamnaam." };
   }
@@ -1277,8 +1633,10 @@ export function rollDice(teamId, forcedRoll = null) {
     }
 
     const isBonusRoll = Boolean(teamState.pendingBonusRoll);
+    // Een vaste worp is alleen toegestaan in de lokale testmodus; in een echte
+    // spelkamer kan niemand (bijv. via aangepaste knoppen in de DOM) de worp kiezen.
     const roll =
-      Number.isInteger(forcedRoll) && forcedRoll >= 1 && forcedRoll <= 6
+      state.isDemo && Number.isInteger(forcedRoll) && forcedRoll >= 1 && forcedRoll <= 6
         ? forcedRoll
         : Math.floor(Math.random() * 6) + 1;
 
@@ -1924,7 +2282,7 @@ export function resolveChoiceWithoutTarget(teamId) {
 export function usePowerUp(teamId, powerUpId) {
   return updateState((state) => {
     const teamState = state.teams[teamId];
-    const powerUp = getSavedPowerUps(teamState).find((item) => item.id === powerUpId);
+    const powerUp = teamState ? getSavedPowerUps(teamState).find((item) => item.id === powerUpId) : null;
     if (!teamState || !powerUp) {
       return state;
     }

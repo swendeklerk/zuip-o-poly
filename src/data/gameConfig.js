@@ -78,7 +78,7 @@ export const GAME_CONFIG = {
   jailWaitSeconds: timerSeconds(7 * 60),
   swapWaitSeconds: timerSeconds(3 * 60),
   attackWaitSeconds: timerSeconds(3 * 60),
-  roomCodeLength: 5
+  roomCodeLength: 6 // 32^6 = ~1 miljard codes: niet te raden/enumereren (5 tekens: 33 miljoen)
 };
 
 // Minimumtimers per opdrachtsoort (seconden). Refresh reset een timer nooit:

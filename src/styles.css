@@ -740,6 +740,8 @@ p {
 
 .lobby-team-name {
   font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .starter-tag {
@@ -1833,9 +1835,18 @@ p {
 
 /* ---- Sfeer-intro bij aankomst op een vak ---- */
 
+.popup-overlay {
+  overflow-y: auto;
+}
+
 .sfeer-card {
   position: relative;
   overflow: visible;
+  /* Lange sfeerteksten: kaart groeit mee en de overlay scrolt; auto-marge
+     houdt hem gecentreerd als er ruimte is en bovenaan als er geen is. */
+  max-height: none;
+  margin: auto;
+  flex: none;
   border-top: 5px solid var(--team-accent);
   text-align: center;
   align-items: center;
@@ -2207,6 +2218,7 @@ body.hit-flash::after {
 }
 
 .cert-name {
+  overflow-wrap: anywhere;
   font-size: 3.2rem;
   line-height: 1;
   margin: 6px 0;
@@ -2452,4 +2464,14 @@ html.turbo .board-pawn {
   border-right-width: 14px;
   border-top: 26px solid var(--gold);
   top: -10px;
+}
+
+/* Her-render van een al open popup: direct in de eindstand, geen tweede inzoom. */
+.popup-overlay.is-static,
+.popup-overlay.is-static *,
+.popup-overlay.is-static *::before,
+.popup-overlay.is-static *::after {
+  animation-duration: 0.001s !important;
+  animation-delay: 0s !important;
+  animation-iteration-count: 1 !important;
 }
