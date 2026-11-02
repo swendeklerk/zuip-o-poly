@@ -192,33 +192,80 @@ function polarPoint(cx, cy, r, deg) {
   return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
 }
 
-// Statische SVG van het rad: één gekleurd taartpunt per drankje (zonder tekst).
+// Tekstkleur per segmentkleur (donker op de lichte vlakken, wit op rood/paars).
+const WHEEL_TEXT_COLORS = ["#ffffff", "#080809", "#ffffff", "#080809", "#080809", "#080809"];
+const WHEEL_SHORT_LABELS = { "Wisseltap / speciaalbier van de maand": "Wisseltap" };
+
+function wheelLabel(name) {
+  return WHEEL_SHORT_LABELS[name] ?? name;
+}
+
+function wheelSliceState(i) {
+  if (wheelSpin.lastIndex === null) {
+    return { opacity: 1, stroke: "#080809", strokeWidth: 1.4 };
+  }
+  return wheelSpin.lastIndex === i
+    ? { opacity: 1, stroke: "#ffffff", strokeWidth: 3 }
+    : { opacity: 0.5, stroke: "#080809", strokeWidth: 1.4 };
+}
+
+// SVG van het rad: één gekleurd taartpunt per drankje, met de naam er
+// leesbaar op (van het midden naar buiten).
 function wheelSvg() {
   const n = CAFE_VAN_OUDS_WHEEL_OPTIONS.length;
   const seg = 360 / n;
   const cx = 100;
   const cy = 100;
-  const r = 96;
+  const r = 98;
   const slices = CAFE_VAN_OUDS_WHEEL_OPTIONS
-    .map((_, i) => {
+    .map((name, i) => {
       const start = i * seg;
       const end = (i + 1) * seg;
+      const mid = start + seg / 2;
       const [x1, y1] = polarPoint(cx, cy, r, start);
       const [x2, y2] = polarPoint(cx, cy, r, end);
       const color = WHEEL_COLORS[i % WHEEL_COLORS.length];
+      const textColor = WHEEL_TEXT_COLORS[i % WHEEL_TEXT_COLORS.length];
       const path = `M ${cx} ${cy} L ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r} ${r} 0 0 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
-      const winner = wheelSpin.lastIndex === i;
-      return `<path d="${path}" fill="${color}" fill-opacity="${winner ? 1 : 0.85}" stroke="#080809" stroke-width="1.4" />`;
+      const label = wheelLabel(name);
+      const fontSize = Math.min(9, 70 / (label.length * 0.56)).toFixed(1);
+      const s = wheelSliceState(i);
+      return `<g class="wheel-slice" data-index="${i}" opacity="${s.opacity}">
+        <path d="${path}" fill="${color}" stroke="${s.stroke}" stroke-width="${s.strokeWidth}" />
+        <text transform="rotate(${(mid - 90).toFixed(2)} ${cx} ${cy})" x="${cx + 90}" y="${cy}" text-anchor="end" dominant-baseline="central" font-family="Inter, system-ui, sans-serif" font-weight="800" font-size="${fontSize}" fill="${textColor}">${esc(label)}</text>
+      </g>`;
     })
     .join("");
   return `
     <svg viewBox="0 0 200 200" class="wheel-svg" xmlns="http://www.w3.org/2000/svg">
       ${slices}
-      <circle cx="${cx}" cy="${cy}" r="90" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2.5" />
-      <circle cx="${cx}" cy="${cy}" r="15" fill="#111116" stroke="#f0eef4" stroke-width="2.5" />
+      <circle cx="${cx}" cy="${cy}" r="99" fill="none" stroke="#f0eef4" stroke-width="2" />
+      <circle cx="${cx}" cy="${cy}" r="16" fill="#111116" stroke="#f0eef4" stroke-width="2.5" />
       <circle cx="${cx}" cy="${cy}" r="5" fill="#f0eef4" />
     </svg>
   `;
+}
+
+function wheelReadoutText() {
+  if (wheelSpin.lastIndex === null) {
+    return "Draai aan het rad";
+  }
+  return CAFE_VAN_OUDS_WHEEL_OPTIONS[wheelSpin.lastIndex];
+}
+
+// Welk segment staat nu onder de wijzer (bovenaan)? Gelezen uit de echte
+// draaihoek van het element, zodat het ook tijdens de CSS-transitie klopt.
+function wheelIndexUnderPointer(spinner) {
+  const matrix = getComputedStyle(spinner).transform;
+  if (!matrix || matrix === "none") {
+    return wheelSpin.lastIndex ?? 0;
+  }
+  const [a, b] = matrix.slice(matrix.indexOf("(") + 1, -1).split(",").map(Number);
+  const angle = (Math.atan2(b, a) * 180) / Math.PI;
+  const n = CAFE_VAN_OUDS_WHEEL_OPTIONS.length;
+  const seg = 360 / n;
+  const underPointer = (((-angle) % 360) + 360) % 360;
+  return Math.min(Math.floor(underPointer / seg), n - 1);
 }
 
 // Laat het rad naar het gekozen segment draaien (altijd voorwaarts, meerdere
@@ -240,25 +287,59 @@ function startWheelSpin(index) {
   // intact tijdens de draai zodat de transitie niet gebroken wordt.
   const spinner = document.querySelector(".wheel-spinner");
   const spinBtn = document.querySelector('[data-action="vanouds-spin"]');
+  const readout = document.querySelector(".wheel-readout");
+  const spinSeconds = TURBO ? 1.2 : 3.4;
   if (spinBtn) {
     spinBtn.disabled = true;
+  }
+  if (readout) {
+    readout.classList.remove("is-result");
+    readout.classList.add("is-spinning");
   }
   if (spinner) {
     spinner.style.transition = "none";
     spinner.style.transform = `rotate(${from}deg)`;
     void spinner.offsetWidth; // commit begintoestand (reflow)
-    spinner.style.transition = "transform 2.7s cubic-bezier(0.15, 0.85, 0.2, 1)";
+    spinner.style.transition = `transform ${spinSeconds}s cubic-bezier(0.12, 0.8, 0.2, 1)`;
     spinner.style.transform = `rotate(${target}deg)`;
+
+    // Live meelezen welk drankje onder de wijzer door gaat, met een tik per segment.
+    let shownIndex = -1;
+    let lastTick = 0;
+    const follow = () => {
+      if (!wheelSpin.active) {
+        return;
+      }
+      const index = wheelIndexUnderPointer(spinner);
+      if (index !== shownIndex) {
+        shownIndex = index;
+        if (readout) {
+          readout.textContent = CAFE_VAN_OUDS_WHEEL_OPTIONS[index];
+        }
+        const nowMs = performance.now();
+        if (nowMs - lastTick > 70) {
+          feedback.diceRattle();
+          lastTick = nowMs;
+        }
+      }
+      window.requestAnimationFrame(follow);
+    };
+    window.requestAnimationFrame(follow);
   }
 
   window.clearTimeout(wheelSpin.timer);
   wheelSpin.timer = window.setTimeout(() => {
     wheelSpin.active = false;
+    if (readout) {
+      readout.textContent = CAFE_VAN_OUDS_WHEEL_OPTIONS[index];
+      readout.classList.remove("is-spinning");
+      readout.classList.add("is-result");
+    }
     feedback.confirm();
     // Geen volledige her-render (dat zou het scherm laten flitsen doordat
     // entree-animaties opnieuw starten). Patch alleen wat veranderde.
     patchVanOudsAfterSpin();
-  }, 2750);
+  }, spinSeconds * 1000 + 50);
 }
 
 // Werkt na een raddraai alleen de spelerslijst, de knop en de winnaar-highlight
@@ -281,8 +362,12 @@ function patchVanOudsAfterSpin() {
   });
 
   // Winnaar-segment markeren.
-  app.querySelectorAll(".wheel-svg path").forEach((path, index) => {
-    path.setAttribute("fill-opacity", index === wheelSpin.lastIndex ? "1" : "0.85");
+  app.querySelectorAll(".wheel-slice").forEach((slice) => {
+    const s = wheelSliceState(Number(slice.dataset.index));
+    slice.setAttribute("opacity", s.opacity);
+    const path = slice.querySelector("path");
+    path.setAttribute("stroke", s.stroke);
+    path.setAttribute("stroke-width", s.strokeWidth);
   });
 
   const next = task.vanOudsChoices.find((choice) => !choice.result);
@@ -1047,6 +1132,7 @@ function renderSpecialFlow(task) {
             ${wheelSvg()}
           </div>
         </div>
+        <div class="wheel-readout ${wheelSpin.lastIndex === null ? "" : "is-result"}" aria-live="polite">${esc(wheelReadoutText())}</div>
         <div class="vanouds-players">
           ${task.vanOudsChoices.map((choice) => `
             <div class="special-row">
