@@ -38,3 +38,60 @@
   from { opacity: 0; transform: translateX(-50%) translateY(-16px) scale(0.94); }
   to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
+
+/* ---- Balkje onderaan: 🍻 📊 🥚 naast elkaar, nooit over de inhoud ---- */
+#features-dock {
+  position: fixed;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+#features-dock > * {
+  pointer-events: auto;
+  position: relative;
+  inset: auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  opacity: 0.88;
+}
+
+#features-dock .juice-btn { order: 1; width: 48px; height: 48px; }
+#features-dock .aw-open { order: 2; width: 48px; height: 48px; }
+#features-dock .egg-counter { order: 3; height: 44px; padding: 0 14px 0 12px; border-radius: 22px; }
+#features-dock .egg-counter[hidden] { display: none; }
+#features-dock .egg-counter-n { font-size: 0.75rem; }
+#features-dock .aw-open.is-covered { opacity: 0; pointer-events: none; }
+
+/* Een open popup of flipkaart heeft het hele scherm nodig. */
+body:has(.popup-overlay) #features-dock {
+  opacity: 0;
+  pointer-events: none;
+}
+
+#features-dock {
+  transition: opacity 160ms ease;
+}
+
+/* Ruimte onder de inhoud, zodat de laatste regel en knop vrij boven het balkje staan. */
+body.has-dock .app-shell {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+/* Het geluidsmenu klapt open boven het balkje. */
+.juice-panel {
+  bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+/* Ondoorzichtig, anders schijnt de tekst eronder door de knoppen. */
+#features-dock > * {
+  opacity: 1;
+  background: #17171f;
+}

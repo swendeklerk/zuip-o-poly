@@ -587,7 +587,7 @@ export function init(ctx) {
       }
       case "smoke":
         g.fillStyle = "rgba(70,66,78,1)";
-        g.globalAlpha = a * 0.35;
+        g.globalAlpha = a * 0.14;
         g.beginPath();
         g.arc(p.x, p.y, Math.max(1, p.size), 0, TAU);
         g.fill();
@@ -709,14 +709,14 @@ export function init(ctx) {
           const deg = side < 0 ? rand(-82, -48) : rand(-132, -98);
           const ang = (deg * Math.PI) / 180;
           const sp = rand(480, 920);
-          confettiPiece(colors, side < 0 ? -6 : W + 6, H + 6, Math.cos(ang) * sp, Math.sin(ang) * sp, rand(2.8, 4.2));
+          confettiPiece(colors, side < 0 ? -6 : W + 6, H + 6, Math.cos(ang) * sp, Math.sin(ang) * sp, rand(1.8, 2.6));
         }
       }
     }
     if (rain) {
       emit({
-        dur: 1.2, rate: 24 * power,
-        fn: () => confettiPiece(colors, rand(0, W), -14, rand(-40, 40), rand(20, 120), rand(3, 4.4), 260)
+        dur: 0.8, rate: 20 * power,
+        fn: () => confettiPiece(colors, rand(0, W), -14, rand(-40, 40), rand(20, 120), rand(2.2, 3), 260)
       });
     }
   }
@@ -854,10 +854,10 @@ export function init(ctx) {
       })
     });
     emit({
-      dur: 2.2, rate: 9,
+      dur: 1.6, rate: 5,
       fn: () => add({
         kind: "smoke", x: rand(0, W), y: rand(H * 0.6, H), vx: rand(-15, 15), vy: -rand(40, 90),
-        life: rand(1.8, 2.6), size: 14, grow: 26, fade: 0.6
+        life: rand(1.2, 1.8), size: 12, grow: 20, fade: 0.6
       })
     });
   }
@@ -931,7 +931,8 @@ export function init(ctx) {
     <p class="juice-hint">Houd 🍻 ingedrukt voor <b>Proost-modus</b>.</p>
     <p class="juice-hint juice-mute" hidden>🔇 Geluid staat uit. Zet het aan bij instellingen.</p>
   `;
-  ctx.root.append(btn, panel);
+  (ctx.dock ?? ctx.root).append(btn);
+  ctx.root.append(panel);
 
   const muteHint = panel.querySelector(".juice-mute");
   const shakeSwitch = panel.querySelector('[data-juice="shake"]');

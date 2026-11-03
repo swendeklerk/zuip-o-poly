@@ -524,8 +524,20 @@ export function init(ctx) {
     pumpToasts();
   }
 
+  let toastRetry = 0;
+
   function pumpToasts() {
     if (showing || !queue.length) return;
+    // Eén laag tegelijk: badge-melding pas als er geen popup of flipkaart open staat.
+    if (document.querySelector(".popup-overlay")) {
+      if (!toastRetry) {
+        toastRetry = window.setTimeout(() => {
+          toastRetry = 0;
+          pumpToasts();
+        }, 700);
+      }
+      return;
+    }
     showing = true;
     const item = queue.shift();
     const el = document.createElement("button");
@@ -573,7 +585,7 @@ export function init(ctx) {
   openBtn.setAttribute("aria-label", "Open kroegstats");
   openBtn.innerHTML = '<span aria-hidden="true">📊</span><i class="aw-open-dot" aria-hidden="true"></i>';
   openBtn.hidden = true;
-  root.appendChild(openBtn);
+  (ctx.dock ?? root).appendChild(openBtn);
 
   function updateUi() {
     const team = ctx.myTeam();
@@ -780,7 +792,7 @@ export function init(ctx) {
             <span class="aw-row-dot"></span>
             <span class="aw-row-main">
               <span class="aw-row-name">${escHtml(t.name)}${mine ? " (jullie)" : ""}</span>
-              <span class="aw-row-sub">${num(t.completedRounds)} rondes · vak ${num(t.position)} · ${num(t.normalTurnsUsed)}/${maxTurns} beurten</span>
+              <span class="aw-row-sub">${num(t.completedRounds)} ${num(t.completedRounds) === 1 ? "ronde" : "rondes"} · vak ${num(t.position)} · ${num(t.normalTurnsUsed)}/${maxTurns} beurten</span>
             </span>
             <span class="aw-row-status dot-${escHtml(meta?.dot ?? "yellow")}">${escHtml(meta?.label ?? "")}</span>
           </li>`;
@@ -977,7 +989,7 @@ export function init(ctx) {
     lines.push("📊 Eindstand");
     const medals = ["🥇", "🥈", "🥉"];
     rows.forEach((r, i) => {
-      lines.push(`${medals[i] ?? `${i + 1}.`} ${r.team.name} · ${num(r.team.completedRounds)} rondes · vak ${num(r.team.position)}`);
+      lines.push(`${medals[i] ?? `${i + 1}.`} ${r.team.name} · ${num(r.team.completedRounds)} ${num(r.team.completedRounds) === 1 ? "ronde" : "rondes"} · vak ${num(r.team.position)}`);
     });
     if (awards.length) {
       lines.push("");

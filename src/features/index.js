@@ -50,6 +50,11 @@ function store(key, fallback) {
 // Handige vaste helpers voor alle features.
 function buildContext() {
   const root = createRoot();
+  // Eén balkje onderaan voor de zwevende knoppen (🍻 📊 🥚), zodat ze niet over de inhoud liggen.
+  const dock = document.createElement("div");
+  dock.id = "features-dock";
+  root.appendChild(dock);
+  document.body.classList.add("has-dock");
   const myTeam = () => {
     const session = getSession();
     const state = getState();
@@ -57,6 +62,7 @@ function buildContext() {
   };
   return {
     root, // vaste laag buiten #app; main.js rendert hier nooit in
+    dock, // balkje onderaan: hang hier je zwevende knop in
     app: document.getElementById("app"),
     getState,
     getSession,
@@ -72,14 +78,29 @@ function buildContext() {
     loadCss,
     store, // store("naam", standaard) -> { get(), set(v) } in localStorage
     // Korte melding bovenin beeld (verdwijnt vanzelf).
+    // Eén laag tegelijk: een melding wacht tot een open popup of flipkaart weg is (max 20 s).
     toast(html, { ms = 3200, className = "" } = {}) {
-      const el = document.createElement("div");
-      el.className = `fx-toast ${className}`;
-      el.innerHTML = html;
-      root.appendChild(el);
-      window.setTimeout(() => el.classList.add("is-leaving"), ms);
-      window.setTimeout(() => el.remove(), ms + 400);
-      return el;
+      const show = () => {
+        const el = document.createElement("div");
+        el.className = `fx-toast ${className}`;
+        el.innerHTML = html;
+        root.appendChild(el);
+        window.setTimeout(() => el.classList.add("is-leaving"), ms);
+        window.setTimeout(() => el.remove(), ms + 400);
+        return el;
+      };
+      const blocked = () => Boolean(document.querySelector(".popup-overlay"));
+      if (!blocked()) {
+        return show();
+      }
+      const waitUntil = Date.now() + 20000;
+      const timer = window.setInterval(() => {
+        if (!blocked() || Date.now() > waitUntil) {
+          window.clearInterval(timer);
+          show();
+        }
+      }, 600);
+      return null;
     }
   };
 }

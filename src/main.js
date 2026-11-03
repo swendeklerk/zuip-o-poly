@@ -130,6 +130,28 @@ function nl2br(value) {
   return esc(value).replaceAll("\n", "<br />");
 }
 
+// Kaarten hebben vaak "grap + lege regel + Effect: wat er gebeurt". Toon de actie
+// eerst en groot, en de grap eronder kleiner. Zonder "Effect:" blijft de tekst zoals hij was.
+function splitCardText(body) {
+  const match = String(body ?? "").match(/^([\s\S]*?)\n\s*\n\s*Effect:\s*([\s\S]+)$/);
+  if (!match) {
+    return null;
+  }
+  const effect = match[2].trim();
+  return { flavour: match[1].trim(), effect: effect.charAt(0).toUpperCase() + effect.slice(1) };
+}
+
+function cardText(body, { withFlavour = true } = {}) {
+  const parts = splitCardText(body);
+  if (!parts) {
+    return nl2br(body ?? "");
+  }
+  return (
+    `<div class="card-effect"><span class="card-effect-label">Wat nu</span><p>${nl2br(parts.effect)}</p></div>` +
+    (withFlavour && parts.flavour ? `<p class="card-flavour">${nl2br(parts.flavour)}</p>` : "")
+  );
+}
+
 function fmtTime(totalSeconds) {
   const seconds = Math.max(Number(totalSeconds) || 0, 0);
   const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
@@ -687,6 +709,7 @@ function renderCreate() {
         <label class="field">
           <span class="field-label">Teamnaam</span>
           <input name="teamName" maxlength="24" required placeholder="Bijv. De Natte Neuzen" autocomplete="off" value="${esc(ui.createTeamName)}" />
+          <span class="field-count">${[...ui.createTeamName].length}/24</span>
         </label>
 
         <div class="field">
@@ -768,6 +791,7 @@ function renderJoin() {
           <label class="field">
             <span class="field-label">Teamnaam</span>
             <input name="teamName" maxlength="24" required placeholder="Bijv. Team Tapstoring" autocomplete="off" value="${esc(ui.joinTeamName)}" />
+            <span class="field-count">${[...ui.joinTeamName].length}/24</span>
           </label>
           <div class="field">
             <span class="field-label">Teamkleur</span>
@@ -1117,7 +1141,7 @@ function renderTaskPanel(state, teamState) {
         <span class="task-tag">${coasterIcon(theme.key, theme.accent, "coaster coaster-sm")} ${esc(theme.tag)}</span>
         <h2 class="task-title">${esc(task.title)}</h2>
       </div>
-      <div class="task-body">${nl2br(task.body)}</div>
+      <div class="task-body">${cardText(task.body)}</div>
       ${task.rules ? `<details class="task-rules"><summary>Regels</summary><p>${nl2br(task.rules)}</p></details>` : ""}
       ${specialBlock}
       ${timerBar}
@@ -1207,7 +1231,7 @@ function renderTeamChoicePanel(state, teamState) {
     <section class="panel action-panel choice-panel">
       <span class="field-label">Team kiezen</span>
       <h2 class="task-title">${esc(task.title)}</h2>
-      <div class="task-body">${nl2br(task.body)}</div>
+      <div class="task-body">${cardText(task.body, { withFlavour: false })}</div>
       ${choosable.length ? `
         <div class="choice-list">
           ${choosable.map((team) => `
@@ -1394,6 +1418,28 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
   const cells = getBoardCells();
   const tile = findTileById(pawnPosition);
   const centerLabel = walk.active ? "Onderweg…" : esc(tile?.name ?? `Vak ${pawnPosition}`);
+
+  // Andere teams als kleine bolletjes op hun vak; de eigen pion blijft de grootste.
+  const others = Object.values(state.teams ?? {})
+    .filter((team) => team.id !== teamState.id && Number.isInteger(team.position) && team.position >= 1)
+    .sort((a, b) => a.joinedAt - b.joinedAt)
+    .map((team) => ({ team, hex: findTeamColor(team.colorId).hex }));
+  const othersByTile = new Map();
+  for (const entry of others) {
+    const list = othersByTile.get(entry.team.position) ?? [];
+    list.push(entry);
+    othersByTile.set(entry.team.position, list);
+  }
+  const legend = others.length
+    ? `<p class="board-legend" aria-label="Andere teams op het bord">${others
+        .slice(0, 7)
+        .map(
+          ({ team, hex }) =>
+            `<span class="board-legend-item" style="--tc:${hex}"><i aria-hidden="true"></i><b>${esc(team.name)}</b> vak ${team.position}</span>`
+        )
+        .join("")}</p>`
+    : "";
+
   return `
     <section class="panel board-panel">
       <div class="board-grid">
@@ -1422,6 +1468,18 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
             <div class="board-cell edge-${edgeSide} ${theme.className} ${tileImage ? "has-tile-image" : ""} ${isHere ? "is-here" : ""}" data-tile-id="${cell.tileId}" style="--tile-color:${theme.color}" title="${esc(cellTile.name)}">
               ${cellIcon}
               ${isHere ? '<span class="board-pawn"></span>' : ""}
+              ${
+                othersByTile.has(cell.tileId)
+                  ? (() => {
+                      const here = othersByTile.get(cell.tileId);
+                      const shown = here.length > 4 ? here.slice(0, 3) : here;
+                      const more = here.length - shown.length;
+                      return `<span class="board-others">${shown
+                        .map(({ team, hex }) => `<i class="board-token" style="--tc:${hex}" title="${esc(team.name)}"></i>`)
+                        .join("")}${more > 0 ? `<i class="board-more" aria-hidden="true">+${more}</i>` : ""}</span>`;
+                    })()
+                  : ""
+              }
             </div>
           `;
         }).join("")}
@@ -1430,6 +1488,7 @@ function renderBoard(state, teamState, pawnPosition = teamState.position) {
           <span class="board-center-pos">${centerLabel}</span>
         </div>
       </div>
+      ${legend}
     </section>
   `;
 }
@@ -1482,7 +1541,7 @@ function renderPopup(state, teamState) {
               ${artImg("popup-art popup-art-small")}
               <span class="popup-kind">${esc(label)}</span>
               <h2>${esc(popup.title)}</h2>
-              <div class="popup-body">${nl2br(popup.body ?? "")}</div>
+              <div class="popup-body">${cardText(popup.body)}</div>
               <button class="button primary big" data-action="dismiss-popup">Oké</button>
             </div>
           </div>
@@ -1515,7 +1574,7 @@ function renderPopup(state, teamState) {
         ${hit ? `<div class="hit-stamp">${hitStampLabel(popup)}</div>` : artImg("popup-art popup-art-small")}
         <span class="popup-kind">${esc(popupKindLabel(popup.kind))}</span>
         <h2>${esc(popup.title)}</h2>
-        <div class="popup-body">${nl2br(popup.body ?? "")}</div>
+        <div class="popup-body">${cardText(popup.body)}</div>
         ${popup.blockedChoiceMessage ? `<p class="popup-blocked">${esc(popup.blockedChoiceMessage)}</p>` : ""}
         <button class="button primary big" data-action="dismiss-popup">Oké</button>
       </div>
@@ -1705,7 +1764,7 @@ function renderEnded(state, teamState) {
               <span class="ranking-place">${index + 1}</span>
               <span class="team-chip-dot"></span>
               <span class="ranking-name">${esc(team.name)}</span>
-              <span class="ranking-stats">${team.completedRounds} rondes · vak ${team.position}</span>
+              <span class="ranking-stats">${team.completedRounds} ${team.completedRounds === 1 ? "ronde" : "rondes"} · vak ${team.position}</span>
             </li>
           `).join("")}
         </ol>
@@ -2048,6 +2107,12 @@ app.addEventListener("input", (event) => {
   const input = event.target;
   if (input?.name !== "teamName") {
     return;
+  }
+  const count = input.closest(".field")?.querySelector(".field-count");
+  if (count) {
+    const used = [...input.value].length;
+    count.textContent = `${used}/${input.maxLength}`;
+    count.classList.toggle("is-full", used >= input.maxLength);
   }
   const formType = input.closest("[data-form]")?.dataset.form;
   if (formType === "create-room") {

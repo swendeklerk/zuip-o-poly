@@ -819,7 +819,7 @@ export function init(ctx) {
       openSheet();
     }
   });
-  ctx.root.appendChild(counterEl);
+  (ctx.dock ?? ctx.root).appendChild(counterEl);
   updateCounter(false);
 
   /* ---------------- tikken, lang indrukken, vasthouden ---------------- */
