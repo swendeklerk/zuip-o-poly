@@ -11,7 +11,7 @@ const isTurbo = (() => {
     return false;
   }
 })();
-const rollDurationMs = isTurbo ? 550 : 1400;
+const rollDurationMs = isTurbo ? 850 : 2200;
 let activeRollTeamId = null;
 
 document.addEventListener(

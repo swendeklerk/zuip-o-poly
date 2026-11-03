@@ -261,8 +261,8 @@ let lastCountdownValue = null;
 
 // Stap-voor-stap pion-animatie. De store verplaatst de pion direct naar de
 // eindpositie; de UI laat 'm zichtbaar vak voor vak lopen via lastMove.steps.
-const WALK_STEP_MS = TURBO ? 160 : 520;
-const DICE_REVEAL_MS = TURBO ? 450 : 1700;
+const WALK_STEP_MS = TURBO ? 280 : 760;
+const DICE_REVEAL_MS = TURBO ? 800 : 2100;
 let walk = { active: false, reveal: false, cells: [], index: 0, timer: null, revealTimer: null, movedAt: 0, roll: null };
 let walkInited = false;
 
