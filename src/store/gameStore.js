@@ -99,12 +99,29 @@ export function clearSession() {
 /* State-opbouw                                                        */
 /* ------------------------------------------------------------------ */
 
-function createTeamState({ id, name, colorId, playerCount }) {
+// Eén naam per teamlid; leeg betekent "Speler N" (zie playerNameOf).
+function cleanPlayerNames(list, count) {
+  const source = Array.isArray(list) ? list : [];
+  return Array.from({ length: count }, (_, index) =>
+    typeof source[index] === "string"
+      ? source[index].replace(/[\x00-\x1f\x7f]/g, "").replace(/\s+/g, " ").trim().slice(0, MAX_PLAYER_NAME)
+      : ""
+  );
+}
+
+export function playerNameOf(team, index) {
+  const name = team?.playerNames?.[index];
+  return typeof name === "string" && name.trim() ? name.trim() : `Speler ${index + 1}`;
+}
+
+function createTeamState({ id, name, colorId, playerCount, playerNames }) {
+  const count = Math.min(Math.max(Number(playerCount) || 1, 1), 8);
   return {
     id,
     name,
     colorId,
-    playerCount: Math.min(Math.max(Number(playerCount) || 1, 1), 8),
+    playerCount: count,
+    playerNames: cleanPlayerNames(playerNames, count),
     joinedAt: now(),
     activeSessionId: null,
     status: TEAM_STATUS.WAITING_START,
@@ -160,6 +177,7 @@ const ROOM_CODE_PATTERN = /^[A-Z0-9]{3,12}$/;
 const WORD_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 const MAX_TEXT = 2000;
 const MAX_NAME = 40;
+const MAX_PLAYER_NAME = 20;
 const MAX_DEPTH = 8;
 const MAX_ARRAY = 100;
 const MAX_KEYS = 80;
@@ -430,6 +448,7 @@ function normalizeTeam(input) {
   team.name = cleanTeamName(raw.name);
   team.colorId = findTeamColor(raw.colorId).id;
   team.playerCount = cleanInt(raw.playerCount, 1, 8, base.playerCount);
+  team.playerNames = cleanPlayerNames(raw.playerNames, team.playerCount);
   team.joinedAt = cleanTimestamp(raw.joinedAt, base.joinedAt);
   team.activeSessionId = cleanId(raw.activeSessionId, null);
   team.status = TEAM_STATUS_VALUES.has(raw.status) ? raw.status : base.status;
@@ -795,7 +814,7 @@ function logEvent(state, text) {
 /* Spelkamer aanmaken / joinen / sessies                               */
 /* ------------------------------------------------------------------ */
 
-export function createRoom({ modeId, teamName, colorId, playerCount }) {
+export function createRoom({ modeId, teamName, colorId, playerCount, playerNames }) {
   const name = cleanTeamName(teamName, "");
   if (!name) {
     return { ok: false, message: "Kies eerst een teamnaam." };
@@ -804,7 +823,7 @@ export function createRoom({ modeId, teamName, colorId, playerCount }) {
   const roomCode = createRoomCode();
   const teamId = createId("team");
   const sessionId = createId("session");
-  const team = createTeamState({ id: teamId, name, colorId, playerCount });
+  const team = createTeamState({ id: teamId, name, colorId, playerCount, playerNames });
   team.activeSessionId = sessionId;
 
   let state = createRoomState({ roomCode, modeId, starterTeamId: teamId });
@@ -847,7 +866,7 @@ export async function fetchRoom(roomCode) {
   return { ok: true, state };
 }
 
-export function joinRoom({ roomCode, teamName, colorId, playerCount, roomState }) {
+export function joinRoom({ roomCode, teamName, colorId, playerCount, playerNames, roomState }) {
   const code = normalizeRoomCode(roomCode);
   const name = cleanTeamName(teamName, "");
   if (!name) {
@@ -887,7 +906,7 @@ export function joinRoom({ roomCode, teamName, colorId, playerCount, roomState }
 
   const teamId = createId("team");
   const sessionId = createId("session");
-  const team = createTeamState({ id: teamId, name, colorId, playerCount });
+  const team = createTeamState({ id: teamId, name, colorId, playerCount, playerNames });
   team.activeSessionId = sessionId;
 
   let nextState = {
@@ -943,13 +962,35 @@ export function setPlayerCount(teamId, playerCount) {
     if (!teamState) {
       return state;
     }
+    const count = Math.min(Math.max(Number(playerCount) || 1, 1), 8);
     return {
       ...state,
       teams: {
         ...state.teams,
         [teamId]: {
           ...teamState,
-          playerCount: Math.min(Math.max(Number(playerCount) || 1, 1), 8)
+          playerCount: count,
+          playerNames: cleanPlayerNames(teamState.playerNames, count)
+        }
+      }
+    };
+  });
+}
+
+// Namen van de teamleden: alleen in de lobby aanpasbaar, daarna staan ze vast.
+export function setPlayerNames(teamId, names) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    if (!teamState || state.phase !== GAME_PHASE.LOBBY) {
+      return state;
+    }
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          playerNames: cleanPlayerNames(names, teamState.playerCount)
         }
       }
     };
@@ -1254,7 +1295,7 @@ function withDock17Meta(task, teamState, tileId) {
     specialFlow: "dock17",
     dock17Choices: Array.from({ length: teamState.playerCount }, (_, index) => ({
       id: `player_${index + 1}`,
-      name: `Speler ${index + 1}`,
+      name: playerNameOf(teamState, index),
       number: null,
       drink: ""
     })),
@@ -1271,7 +1312,7 @@ function withVanOudsMeta(task, teamState, tileId) {
     specialFlow: "vanOuds",
     vanOudsChoices: Array.from({ length: teamState.playerCount }, (_, index) => ({
       id: `player_${index + 1}`,
-      name: `Speler ${index + 1}`,
+      name: playerNameOf(teamState, index),
       result: ""
     })),
     vanOudsComplete: false
@@ -1282,7 +1323,7 @@ function withSpecialTaskMeta(task, teamState, tileId) {
   return withVanOudsMeta(withDock17Meta(task, teamState, tileId), teamState, tileId);
 }
 
-function createStartBonusTask() {
+function createStartBonusTask(actorName = "Een ander team") {
   const startTile = findTileById(1);
   const task = createTaskForTile(startTile);
   return {
@@ -1296,7 +1337,7 @@ function createStartBonusTask() {
     startedAt: now(),
     notifyActorText: "Bel het gekozen team en deel het biertje uit. Daarna gewoon verder spelen.",
     notifyTargetText:
-      "Een ander team is langs Start gekomen en heeft jullie gekozen voor de rondebonus: zij delen een biertje uit aan jullie team. Wacht op hun belletje. Jullie spelen gewoon door."
+      `${actorName} is langs Start gekomen en heeft jullie gekozen voor de rondebonus: zij delen een biertje uit aan jullie team. Wacht op hun belletje. Jullie spelen gewoon door.`
   };
 }
 
@@ -1540,7 +1581,7 @@ function applyMovement(state, teamId, position, roundsGained, options = {}) {
 
   if (crossedStart) {
     movedState = logEvent(movedState, `${teamState.name} heeft een ronde voltooid.`);
-    const bonusTask = createStartBonusTask();
+    const bonusTask = createStartBonusTask(teamState.name);
     movedState = {
       ...movedState,
       teams: {
@@ -1876,7 +1917,7 @@ export function chooseTeam(teamId, targetTeamId) {
               savedPowerUps: removeSavedPowerUp(targetState, targetShield.id),
               activePopup: {
                 title: "Geluksvogel",
-                body: "Een ander team probeerde jullie te raken, maar Geluksvogel heeft de actie geblokkeerd. Deze power-up is nu gebruikt.",
+                body: `${teamState.name} probeerde jullie te raken, maar Geluksvogel heeft de actie geblokkeerd. Deze power-up is nu gebruikt.`,
                 kind: "fund",
                 stage: "detail"
               }
@@ -1983,7 +2024,7 @@ function resolveTeamChoiceMove(state, teamId, targetTeamId) {
     source: "attack",
     popup: {
       title: "Jullie zijn geraakt",
-      body: `Een ander team heeft jullie ${Math.abs(delta)} vakjes ${direction} gezet. Jullie oude opdracht vervalt en het nieuwe vakje wordt direct uitgevoerd.`,
+      body: `${teamState.name} heeft jullie ${Math.abs(delta)} vakjes ${direction} gezet. Jullie oude opdracht vervalt en het nieuwe vakje wordt direct uitgevoerd.`,
       kind: task.presentation ?? "chance",
       stage: "detail"
     }
@@ -2020,7 +2061,7 @@ function resolveTeamChoiceWait(state, teamId, targetTeamId) {
         status: TEAM_STATUS.WAITING_TIMER,
         activePopup: {
           title: "Jullie zijn geraakt",
-          body: `Een ander team heeft jullie uit de flow getrokken. Jullie huidige opdracht vervalt. Wacht ${minutes} minuten voordat jullie opnieuw mogen gooien.`,
+          body: `${teamState.name} heeft jullie uit de flow getrokken. Jullie huidige opdracht vervalt. Wacht ${minutes} minuten voordat jullie opnieuw mogen gooien.`,
           kind: task.presentation ?? "chance",
           stage: "detail"
         }
@@ -2067,7 +2108,7 @@ function resolveWisselstation(state, teamId, targetTeamId) {
         status: TEAM_STATUS.WAITING_SWAP,
         activePopup: {
           title: "Jullie zijn gewisseld",
-          body: `Jullie zijn gewisseld door een ander team. Jullie huidige opdracht vervalt. Wacht ${minutes} minuten voordat jullie opnieuw mogen gooien.`,
+          body: `Jullie zijn gewisseld door ${teamState.name}. Jullie huidige opdracht vervalt. Wacht ${minutes} minuten voordat jullie opnieuw mogen gooien.`,
           kind: "swap",
           stage: "detail"
         }
@@ -2109,7 +2150,7 @@ function resolveSwapPositions(state, teamId, targetTeamId) {
         waitUntil: null,
         activePopup: {
           title: "Jullie zijn gewisseld",
-          body: "Een ander team heeft Wisseltruc gebruikt. Jullie oude opdracht vervalt en jullie voeren het nieuwe vakje direct uit.",
+          body: `${teamState.name} heeft Wisseltruc gebruikt. Jullie oude opdracht vervalt en jullie voeren het nieuwe vakje direct uit.`,
           kind: "fund",
           stage: "detail"
         }
@@ -2133,7 +2174,7 @@ function resolveUnoReverse(state, teamId, targetTeamId) {
 
   const bonusTask = {
     title: "Uno Reverse!",
-    body: "Een ander team heeft de power-up Uno Reverse op jullie gebruikt. Ieder actief teamlid doet direct een adje wodka-Red Bull. Pas daarna mogen jullie opnieuw gooien.",
+    body: `${teamState.name} heeft de power-up Uno Reverse op jullie gebruikt. Ieder actief teamlid doet direct een adje wodka-Red Bull. Pas daarna mogen jullie opnieuw gooien.`,
     placeholder: false,
     presentation: "task",
     effectType: "task",

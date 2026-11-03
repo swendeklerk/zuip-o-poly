@@ -2659,3 +2659,59 @@ html.turbo .board-pawn {
   overflow-wrap: anywhere;
   text-overflow: clip;
 }
+
+/* Namen van de teamleden */
+.player-names {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.player-name-row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.player-name-index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface3);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.player-names-hint {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.player-name-row input {
+  min-height: 44px;
+}
+
+/* Namenvelden ook buiten .field (lobby) in dezelfde stijl als de andere velden. */
+.player-name-row input {
+  width: 100%;
+  min-height: 48px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  padding: 10px 14px;
+  outline: none;
+}
+
+.player-name-row input:focus {
+  border-color: rgba(232, 0, 29, 0.55);
+  box-shadow: 0 0 0 3px rgba(232, 0, 29, 0.15);
+}

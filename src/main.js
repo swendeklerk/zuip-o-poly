@@ -40,6 +40,7 @@ import {
   rollDice,
   runClockTick,
   setPlayerCount,
+  setPlayerNames,
   skipTask,
   spinVanOudsWheel,
   startDemoGame,
@@ -83,7 +84,35 @@ const app = document.getElementById("app");
     set(html) {
       const before = popupKey();
       const scroll = before ? popupScroller()?.scrollTop ?? 0 : 0;
+      // Typt iemand in een naamveld terwijl het scherm ververst, dan blijven focus en cursor staan.
+      const active = document.activeElement;
+      const focus =
+        active instanceof HTMLInputElement && app.contains(active) && active.name
+          ? {
+              name: active.name,
+              index: active.dataset.index ?? null,
+              scope: active.dataset.scope ?? null,
+              start: active.selectionStart,
+              end: active.selectionEnd
+            }
+          : null;
       native.set.call(this, html);
+      if (focus) {
+        const next = [...app.querySelectorAll("input")].find(
+          (el) =>
+            el.name === focus.name &&
+            (el.dataset.index ?? null) === focus.index &&
+            (el.dataset.scope ?? null) === focus.scope
+        );
+        if (next) {
+          next.focus({ preventScroll: true });
+          try {
+            next.setSelectionRange(focus.start, focus.end);
+          } catch {
+            /* sommige invoertypes kennen geen selectie */
+          }
+        }
+      }
       if (before && before === popupKey()) {
         app.querySelector(".popup-overlay")?.classList.add("is-static");
         const scroller = popupScroller();
@@ -104,6 +133,9 @@ const ui = {
   createModeId: DEFAULT_MODE_ID,
   createColorId: TEAM_COLORS[0].id,
   createPlayerCount: 3,
+  createPlayerNames: [],
+  joinPlayerNames: [],
+  lobbyNames: null,
   createTeamName: "",
   joinTeamName: "",
   joinCode: "",
@@ -652,6 +684,15 @@ function colorPicker(selectedId, takenIds, actionName) {
   `;
 }
 
+function playerNameFields(names, count, scope) {
+  const rows = Array.from({ length: count }, (_, i) => `
+    <label class="player-name-row">
+      <span class="player-name-index" aria-hidden="true">${i + 1}</span>
+      <input name="playerName" data-scope="${scope}" data-index="${i}" maxlength="20" placeholder="Speler ${i + 1}" autocomplete="off" aria-label="Naam van speler ${i + 1}" value="${esc(names?.[i] ?? "")}" />
+    </label>`).join("");
+  return `<div class="player-names">${rows}</div>`;
+}
+
 function playerStepper(count, actionPrefix) {
   return `
     <div class="player-stepper">
@@ -720,6 +761,7 @@ function renderCreate() {
         <div class="field">
           <span class="field-label">Actieve teamleden</span>
           ${playerStepper(ui.createPlayerCount, "create-player")}
+          ${playerNameFields(ui.createPlayerNames, ui.createPlayerCount, "create")}
         </div>
 
         <div class="field">
@@ -800,6 +842,7 @@ function renderJoin() {
           <div class="field">
             <span class="field-label">Actieve teamleden</span>
             ${playerStepper(ui.joinPlayerCount, "join-player")}
+            ${playerNameFields(ui.joinPlayerNames, ui.joinPlayerCount, "join")}
           </div>
           ${ui.joinError ? `<p class="form-error">${esc(ui.joinError)}</p>` : ""}
           <button class="button primary big" type="submit">Meedoen</button>
@@ -879,6 +922,12 @@ function renderLobby(state, teamState) {
           ${teamChip(teamState)}
           ${playerStepper(teamState.playerCount, "lobby-player")}
         </div>
+        <p class="player-names-hint">Namen van jullie teamleden (leeg laten mag). Aanpassen kan tot het spel start.</p>
+        ${playerNameFields(
+          Array.from({ length: teamState.playerCount }, (_, i) => (ui.lobbyNames ?? teamState.playerNames ?? [])[i] ?? ""),
+          teamState.playerCount,
+          "lobby"
+        )}
       </section>
 
       <section class="panel">
@@ -1854,9 +1903,11 @@ app.addEventListener("click", (event) => {
       render();
       break;
     case "lobby-player-minus":
+      ui.lobbyNames = null;
       setPlayerCount(session.teamId, (getState()?.teams[session.teamId]?.playerCount ?? 2) - 1);
       break;
     case "lobby-player-plus":
+      ui.lobbyNames = null;
       setPlayerCount(session.teamId, (getState()?.teams[session.teamId]?.playerCount ?? 2) + 1);
       break;
     case "resume-team": {
@@ -2052,7 +2103,8 @@ app.addEventListener("submit", async (event) => {
       modeId: ui.createModeId,
       teamName: data.get("teamName"),
       colorId: ui.createColorId,
-      playerCount: ui.createPlayerCount
+      playerCount: ui.createPlayerCount,
+      playerNames: ui.createPlayerNames.slice(0, ui.createPlayerCount)
     });
     if (!result.ok) {
       ui.createError = result.message;
@@ -2061,6 +2113,7 @@ app.addEventListener("submit", async (event) => {
     }
     ui.createError = "";
     ui.createTeamName = "";
+    ui.createPlayerNames = [];
     connectSync();
     render();
     return;
@@ -2086,6 +2139,7 @@ app.addEventListener("submit", async (event) => {
       teamName: data.get("teamName"),
       colorId: ui.joinColorId,
       playerCount: ui.joinPlayerCount,
+      playerNames: ui.joinPlayerNames.slice(0, ui.joinPlayerCount),
       roomState: ui.joinFetchedState
     });
     if (!result.ok) {
@@ -2095,6 +2149,7 @@ app.addEventListener("submit", async (event) => {
     }
     ui.joinError = "";
     ui.joinTeamName = "";
+    ui.joinPlayerNames = [];
     ui.joinFetchedState = null;
     connectSync();
     render();
@@ -2105,6 +2160,22 @@ app.addEventListener("submit", async (event) => {
 // spelersaantal wordt gekozen (die acties renderen het formulier opnieuw).
 app.addEventListener("input", (event) => {
   const input = event.target;
+  if (input?.name === "playerName") {
+    const index = Number(input.dataset.index);
+    const scope = input.dataset.scope;
+    if (Number.isInteger(index) && index >= 0 && index < 8) {
+      if (scope === "create") {
+        ui.createPlayerNames[index] = input.value;
+      } else if (scope === "join") {
+        ui.joinPlayerNames[index] = input.value;
+      } else if (scope === "lobby") {
+        const own = getState()?.teams?.[getSession()?.teamId];
+        ui.lobbyNames = ui.lobbyNames ?? [...(own?.playerNames ?? [])];
+        ui.lobbyNames[index] = input.value;
+      }
+    }
+    return;
+  }
   if (input?.name !== "teamName") {
     return;
   }
@@ -2123,6 +2194,16 @@ app.addEventListener("input", (event) => {
 });
 
 app.addEventListener("change", (event) => {
+  const nameInput = event.target;
+  if (nameInput?.name === "playerName" && nameInput.dataset.scope === "lobby" && ui.lobbyNames) {
+    const names = ui.lobbyNames;
+    ui.lobbyNames = null;
+    const teamId = getSession()?.teamId;
+    if (teamId) {
+      setPlayerNames(teamId, names);
+    }
+    return;
+  }
   const target = event.target.closest("[data-change]");
   if (!target) {
     return;
