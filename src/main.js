@@ -747,7 +747,7 @@ function renderEntry(notice = "") {
       <div class="home-actions">
         <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
         <button class="button ghost big" data-action="nav-join">Meedoen met spelcode</button>
-        <button class="button ghost big" data-action="nav-leader">Spelleider</button>
+        ${LEADER_LINK ? '<button class="button ghost big" data-action="nav-leader">Spelleider</button>' : ""}
         <button class="button gold big" data-action="start-demo">Testmodus — probeer alles</button>
         <button class="button ghost turbo-toggle ${TURBO ? "is-on" : ""}" data-action="toggle-turbo">
           ⚡ Turbo-test: ${TURBO ? "AAN — timers ~15x korter" : "uit — timers in echte tijd"}
@@ -1248,6 +1248,22 @@ function renderTaskPanel(state, teamState) {
 }
 
 let diceAnimatedKey = null;
+
+// De knop 'Spelleider' staat alleen op het startscherm als je de app opent via ...?spelleider=1
+// (blijft daarna op dit toestel onthouden; ?spelleider=0 haalt hem weer weg). Teams zien hem zo niet.
+const LEADER_LINK = (() => {
+  try {
+    const param = new URLSearchParams(window.location.search).get("spelleider");
+    if (param === "1") {
+      window.localStorage.setItem("zuipopoly.leaderLink", "1");
+    } else if (param === "0") {
+      window.localStorage.removeItem("zuipopoly.leaderLink");
+    }
+    return window.localStorage.getItem("zuipopoly.leaderLink") === "1";
+  } catch {
+    return false;
+  }
+})();
 
 function renderSpecialFlow(task) {
   if (task.specialFlow === "dice") {
@@ -2056,10 +2072,6 @@ function renderLeaderEntry() {
             <span class="field-label">Spelcode</span>
             <input name="leaderRoomCode" maxlength="8" required placeholder="Bijv. K7X2PQ" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(leaderUi.roomCode)}" />
           </label>
-          <label class="field">
-            <span class="field-label">Spelleiderscode</span>
-            <input name="leaderCodeInput" maxlength="8" required placeholder="8 tekens" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(leaderUi.leaderCode)}" />
-          </label>
           ${leaderUi.error ? `<p class="form-error">${esc(leaderUi.error)}</p>` : ""}
           <button class="button primary big" type="submit" ${leaderUi.busy ? "disabled" : ""}>${leaderUi.busy ? "Zoeken…" : "Meedoen als spelleider"}</button>
           <button class="button link" type="button" data-action="nav-leader">Terug</button>
@@ -2127,12 +2139,6 @@ function renderLeaderLobby(state) {
           <button class="button ghost" data-action="copy-code">${ui.copied ? "Gekopieerd!" : "Kopieer"}</button>
         </div>
         <p class="room-meta">Spelstand: <strong>${esc(mode.label)}</strong> · ${mode.turns} worpen per team ${syncBadge(state)}</p>
-      </section>
-
-      <section class="panel leader-code-panel">
-        <span class="field-label">Spelleiderscode</span>
-        <strong class="room-code leader-code">${esc(getSession()?.leaderCode || "--------")}</strong>
-        <p class="panel-sub">Deel deze met de andere spelleider.</p>
       </section>
 
       <section class="panel">
@@ -2671,7 +2677,6 @@ app.addEventListener("submit", async (event) => {
       return;
     }
     leaderUi.roomCode = normalizeRoomCode(data.get("leaderRoomCode"));
-    leaderUi.leaderCode = normalizeRoomCode(data.get("leaderCodeInput"));
     leaderUi.error = "";
     leaderUi.busy = true;
     render();
@@ -2684,7 +2689,6 @@ app.addEventListener("submit", async (event) => {
     }
     const result = joinAsLeader({
       roomCode: leaderUi.roomCode,
-      leaderCode: leaderUi.leaderCode,
       roomState: fetched.state
     });
     if (!result.ok) {

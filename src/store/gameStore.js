@@ -1012,9 +1012,8 @@ export function createLeaderRoom({ modeId }) {
 }
 
 // Tweede (of herstelde) spelleider: spelcode + spelleiderscode.
-export function joinAsLeader({ roomCode, leaderCode, roomState = null }) {
+export function joinAsLeader({ roomCode, roomState = null }) {
   const code = normalizeRoomCode(roomCode);
-  const enteredCode = normalizeRoomCode(leaderCode);
 
   let state = null;
   const existingRaw = window.localStorage.getItem(storageKey(code));
@@ -1029,17 +1028,15 @@ export function joinAsLeader({ roomCode, leaderCode, roomState = null }) {
   if (!state) {
     return { ok: false, message: "Spelkamer niet gevonden." };
   }
-  if (!state.leaderMode || !state.leaderCodeHash) {
+  // Zondagversie: meedoen als spelleider kan met alleen de spelcode (geen aparte code).
+  if (!state.leaderMode) {
     return { ok: false, message: "Dit is geen spelkamer met spelleider." };
-  }
-  if (!enteredCode || leaderCodeHash(code, enteredCode) !== state.leaderCodeHash) {
-    return { ok: false, message: "Deze spelleiderscode klopt niet." };
   }
 
   window.localStorage.setItem(storageKey(code), JSON.stringify(state));
   window.localStorage.setItem(
     SESSION_KEY,
-    JSON.stringify({ roomCode: code, role: "leader", sessionId: createId("session"), leaderCode: enteredCode })
+    JSON.stringify({ roomCode: code, role: "leader", sessionId: createId("session") })
   );
   emit();
   return { ok: true, roomCode: code };
@@ -1104,7 +1101,7 @@ export function joinRoom({ roomCode, teamName, colorId, playerCount, playerNames
     return { ok: false, message: "Dit spel is al gestart. Joinen kan alleen in de lobby." };
   }
   if (Object.keys(state.teams).length >= GAME_CONFIG.maxTeams) {
-    return { ok: false, message: "De spelkamer zit vol." };
+    return { ok: false, message: `De spelkamer zit vol (maximaal ${GAME_CONFIG.maxTeams} teams).` };
   }
 
   const nameTaken = Object.values(state.teams).some(
