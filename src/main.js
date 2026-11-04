@@ -17,6 +17,14 @@ import { GAME_PHASE, STATUS_META, TEAM_STATUS } from "./data/statuses.js";
 import { CAFE_VAN_OUDS_WHEEL_OPTIONS } from "./data/tileAssignments.js";
 import { feedback, getFeedbackSettings, setFeedbackSetting } from "./services/feedback.js";
 import {
+  acknowledgeProofIntro,
+  approveProof,
+  createLeaderRoom,
+  demoSetLeaderMode,
+  getPendingApprovals,
+  joinAsLeader,
+  rejectProof,
+  startGameAsLeader,
   chooseTeam,
   clearSession,
   confirmTask,
@@ -34,8 +42,8 @@ import {
   isSessionActive,
   joinRoom,
   normalizeRoomCode,
+  pickDock17Number,
   resolveChoiceWithoutTarget,
-  revealDock17Choices,
   revealPopupCard,
   rollDice,
   runClockTick,
@@ -47,9 +55,9 @@ import {
   startGame,
   subscribe,
   takeoverTeam,
-  updateDock17Choice,
   usePowerUp,
   demoAlmostDone,
+  demoAngel,
   demoDrawCard,
   demoFinishOpponents,
   demoGivePowerUps,
@@ -572,8 +580,18 @@ function render() {
   const session = getSession();
   const state = getState();
 
+  if (session?.role !== "leader") {
+    setLeaderTitle(null);
+  }
+
   if (!session?.roomCode || !state) {
     renderEntry();
+    return;
+  }
+
+  // Spelleider: geen team, eigen scherm.
+  if (session.role === "leader") {
+    renderLeader(state);
     return;
   }
 
@@ -607,7 +625,7 @@ function render() {
 
   // Een open dialoog die niet meer past bij de status (bijv. na een aanval
   // van een ander team) laten vervallen, zodat hij geen popups blokkeert.
-  if (ui.dialog?.type === "skip" && teamState.status !== TEAM_STATUS.TASK_ACTIVE) {
+  if (ui.dialog?.type === "skip" && (teamState.status !== TEAM_STATUS.TASK_ACTIVE || teamState.awaitingApproval)) {
     ui.dialog = null;
   } else if (ui.dialog?.type === "choose" && teamState.status !== TEAM_STATUS.CHOOSING_TEAM) {
     ui.dialog = null;
@@ -716,6 +734,10 @@ function renderEntry(notice = "") {
     renderJoin();
     return;
   }
+  if (["leader-menu", "leader-create", "leader-join"].includes(ui.screen)) {
+    renderLeaderEntry();
+    return;
+  }
 
   app.innerHTML = `
     <div class="screen screen-home">
@@ -724,6 +746,7 @@ function renderEntry(notice = "") {
       <div class="home-actions">
         <button class="button primary big" data-action="nav-create">Spelkamer aanmaken</button>
         <button class="button ghost big" data-action="nav-join">Meedoen met spelcode</button>
+        <button class="button ghost big" data-action="nav-leader">Spelleider</button>
         <button class="button gold big" data-action="start-demo">Testmodus — probeer alles</button>
         <button class="button ghost turbo-toggle ${TURBO ? "is-on" : ""}" data-action="toggle-turbo">
           ⚡ Turbo-test: ${TURBO ? "AAN — timers ~15x korter" : "uit — timers in echte tijd"}
@@ -951,7 +974,9 @@ function renderLobby(state, teamState) {
       </section>
 
       <section class="panel lobby-wait-panel">
-        ${isStarter ? `
+        ${state.leaderMode ? `
+          <p class="lobby-leader-wait">Wacht tot de spelleider het spel start.</p>
+        ` : isStarter ? `
           <p>Start het spel zodra alle teams zijn aangemeld. In je eentje testen kan ook — je kunt gewoon starten.</p>
           <button class="button primary big" data-action="start-game" ${enoughTeams ? "" : "disabled"}>Start het spel</button>
         ` : `
@@ -961,6 +986,7 @@ function renderLobby(state, teamState) {
 
       <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
       ${renderDialog(state, teamState)}
+      ${renderProofIntro(state, teamState)}
     </div>
   `;
 }
@@ -1160,6 +1186,14 @@ function renderTaskPanel(state, teamState) {
     `;
   }
 
+  // Met spelleider: bewijs is verstuurd, wachten op goed- of afkeuren.
+  if (state.leaderMode && teamState.awaitingApproval) {
+    return renderProofWaitPanel(task, teamState.awaitingApproval);
+  }
+
+  const leaderMode = Boolean(state.leaderMode);
+  const confirmLabel = leaderMode ? "Bewijs gestuurd" : "Gedaan, wij zweren het";
+  const confirmBonusLabel = leaderMode ? "Bewijs gestuurd mét bonus" : "Gedaan mét bonus";
   const remaining = getTaskConfirmRemaining(teamState);
   const timerBusy = remaining > 0;
   const specialBlock = renderSpecialFlow(task);
@@ -1191,16 +1225,17 @@ function renderTaskPanel(state, teamState) {
         <h2 class="task-title">${esc(task.title)}</h2>
       </div>
       <div class="task-body">${cardText(task.body)}</div>
+      ${leaderMode ? '<p class="proof-hint">Stuur een foto of filmpje naar jullie spelleider.</p>' : ""}
       ${task.rules ? `<details class="task-rules"><summary>Regels</summary><p>${nl2br(task.rules)}</p></details>` : ""}
       ${specialBlock}
       ${timerBar}
 
       <div class="task-actions">
         ${task.bonusPowerUp ? `
-          <button class="button primary big ${ready ? "cta-pulse" : ""}" data-action="confirm-task" ${ready ? "" : "disabled"}>Gedaan, wij zweren het</button>
-          <button class="button gold big" data-action="confirm-task-bonus" ${ready ? "" : "disabled"}>Gedaan mét bonus (${esc(task.bonusPowerUp.label)})</button>
+          <button class="button primary big ${ready ? "cta-pulse" : ""}" data-action="confirm-task" ${ready ? "" : "disabled"}>${confirmLabel}</button>
+          <button class="button gold big" data-action="confirm-task-bonus" ${ready ? "" : "disabled"}>${confirmBonusLabel} (${esc(task.bonusPowerUp.label)})</button>
         ` : `
-          <button class="button primary big ${ready ? "cta-pulse" : ""}" data-action="confirm-task" ${ready ? "" : "disabled"}>Gedaan, wij zweren het</button>
+          <button class="button primary big ${ready ? "cta-pulse" : ""}" data-action="confirm-task" ${ready ? "" : "disabled"}>${confirmLabel}</button>
         `}
         ${task.skippable !== false ? `
           <button class="button ghost" data-action="ask-skip">Opdracht skippen (−${GAME_CONFIG.skipPenaltySteps} vakjes)</button>
@@ -1212,29 +1247,31 @@ function renderTaskPanel(state, teamState) {
 
 function renderSpecialFlow(task) {
   if (task.specialFlow === "dock17") {
+    // Om beurten: de eerste speler zonder getal is aan de beurt (zelfde regel als in de store).
+    const turn = task.dock17Choices.find((choice) => !choice.number);
+    const taken = new Set(task.dock17Choices.map((choice) => choice.number).filter(Boolean));
+    const lastPicked = [...task.dock17Choices].reverse().find((choice) => choice.number);
     return `
-      <div class="special-flow">
-        <p class="special-flow-title">Kies per speler een getal (1–17):</p>
-        ${task.dock17Choices.map((choice) => `
-          <div class="special-row">
-            <span>${esc(choice.name)}</span>
-            ${task.dock17Revealed
-              ? `<strong>${esc(choice.number)} = ${esc(choice.drink)}</strong>`
-              : `<select data-change="dock17-number" data-choice-id="${esc(choice.id)}">
-                  <option value="">Kies…</option>
-                  ${Array.from({ length: 17 }, (_, index) => index + 1)
-                    .map((number) => `<option value="${number}" ${choice.number === number ? "selected" : ""}>${number}</option>`)
-                    .join("")}
-                </select>`}
-          </div>
-        `).join("")}
-        ${!task.dock17Revealed ? `
-          <button
-            class="button gold"
-            data-action="dock17-reveal"
-            ${task.dock17Choices.every((choice) => choice.number) ? "" : "disabled"}
-          >Onthul de drankjes</button>
-        ` : ""}
+      <div class="special-flow dock17-flow">
+        ${turn
+          ? `<p class="dock17-turn">Nu aan de beurt: <strong>${esc(turn.name)}</strong></p>
+             <p class="special-flow-title">Kies een getal (1–17). Je ziet meteen je drankje.</p>
+             <div class="dock17-grid">
+               ${Array.from({ length: 17 }, (_, index) => index + 1).map((number) => `
+                 <button class="dock17-num ${taken.has(number) ? "is-taken" : ""}" data-action="dock17-pick" data-number="${number}" ${taken.has(number) ? "disabled" : ""}>${number}</button>
+               `).join("")}
+             </div>`
+          : '<p class="dock17-turn dock17-done">Iedereen heeft gekozen. Proost! 🍻</p>'}
+        <div class="dock17-results">
+          ${task.dock17Choices.map((choice) => `
+            <div class="special-row dock17-result ${choice === lastPicked && turn ? "is-latest" : ""}">
+              <span>${esc(choice.name)}</span>
+              ${choice.number
+                ? `<strong>${esc(choice.number)} = ${esc(choice.drink)}</strong>`
+                : '<span class="row-muted">nog niet gekozen</span>'}
+            </div>
+          `).join("")}
+        </div>
       </div>
     `;
   }
@@ -1374,6 +1411,10 @@ function renderPowerUps(state, teamState) {
 }
 
 function isPowerUpUsable(teamState, powerUp) {
+  // Tijdens het wachten op de spelleider staat alles vast.
+  if (teamState.awaitingApproval) {
+    return false;
+  }
   switch (powerUp.type) {
     case "skip_task":
     case "skip_free":
@@ -1433,6 +1474,7 @@ function renderDemoPanel(state, teamState) {
           <button class="button ghost small" data-action="demo-chance">Trek Kans</button>
           <button class="button ghost small" data-action="demo-fund">Trek Fonds</button>
           <button class="button ghost small" data-action="demo-powerups">Geef alle power-ups</button>
+          <button class="button ghost small" data-action="demo-angel">Gratis verrassing (test)</button>
         </div>
       </div>
 
@@ -1443,6 +1485,15 @@ function renderDemoPanel(state, teamState) {
           <button class="button ghost small" data-action="demo-attack" data-kind="wait">Wachttijd</button>
           <button class="button ghost small" data-action="demo-attack" data-kind="swap">Gewisseld</button>
           <button class="button ghost small" data-action="demo-attack" data-kind="jail">Naar cel</button>
+        </div>
+      </div>
+
+      <div class="demo-section">
+        <span class="field-label">Spelleider (test)</span>
+        <div class="demo-row">
+          <button class="button ${state.leaderMode ? "gold" : "ghost"} small" data-action="demo-leader-toggle" aria-pressed="${state.leaderMode ? "true" : "false"}">Met spelleider (test): ${state.leaderMode ? "AAN" : "uit"}</button>
+          <button class="button ghost small" data-action="demo-leader-approve" ${state.leaderMode && teamState.awaitingApproval ? "" : "disabled"}>Spelleider: goedkeuren</button>
+          <button class="button ghost small" data-action="demo-leader-reject" ${state.leaderMode && teamState.awaitingApproval ? "" : "disabled"}>Spelleider: afkeuren</button>
         </div>
       </div>
 
@@ -1739,6 +1790,11 @@ function renderDialog(state, teamState) {
               <span>📳 Trillen</span>
               <span class="toggle-pill">${fb.vibration ? "AAN" : "UIT"}</span>
             </button>
+            ${window.zuipFx?.shake?.available ? `
+            <button class="settings-toggle ${window.zuipFx.shake.isOn() ? "is-on" : ""}" data-action="toggle-shake">
+              <span>🤝 Schud om te gooien</span>
+              <span class="toggle-pill">${window.zuipFx.shake.isOn() ? "AAN" : "UIT"}</span>
+            </button>` : ""}
           </div>
           <button class="button primary big" data-action="dialog-cancel">Klaar</button>
         </div>
@@ -1825,6 +1881,406 @@ function renderEnded(state, teamState) {
     </div>
   `;
 }
+
+/* ------------------------------------------------------------------ */
+/* Spelleider-modus: instap, spelleiderscherm, bewijs wachten          */
+/* ------------------------------------------------------------------ */
+// De spelleider speelt niet mee (geen team). Teams sturen bewijs via WhatsApp;
+// de spelleider keurt hier goed of af. De spelleiderscode is een eerlijkheidscode.
+
+const leaderUi = {
+  roomCode: "",
+  leaderCode: "",
+  error: "",
+  busy: false,
+  seen: null, // Set met al gemelde wachtende bewijzen (null = nog niet gestart)
+  titleBase: document.title,
+  titleActive: false
+};
+
+// Documenttitel met het aantal wachtenden; null zet de gewone titel terug.
+function setLeaderTitle(count) {
+  if (count === null) {
+    if (leaderUi.titleActive) {
+      document.title = leaderUi.titleBase;
+      leaderUi.titleActive = false;
+    }
+    leaderUi.seen = null;
+    return;
+  }
+  leaderUi.titleActive = true;
+  document.title = count > 0 ? `(${count}) Wachten op goedkeuring - Spelleider` : "Spelleider - Zuip-O-Poly";
+}
+
+function proofWaitSeconds(sentAt) {
+  return Math.max(Math.floor((Date.now() - sentAt) / 1000), 0);
+}
+
+// Laat de lopende wachttijden (team en spelleider) doortikken zonder het scherm te herbouwen.
+function updateProofTimers() {
+  document.querySelectorAll("[data-wait-since]").forEach((el) => {
+    const since = Number(el.dataset.waitSince);
+    if (since) {
+      el.textContent = fmtTime(proofWaitSeconds(since));
+    }
+  });
+}
+
+// Eerste regels van de opdracht, voor in de goedkeuringskaart.
+function proofExcerpt(body) {
+  const parts = splitCardText(body);
+  const text = parts ? parts.effect : String(body ?? "");
+  const lines = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(" · ");
+  return lines.length > 240 ? `${lines.slice(0, 237)}…` : lines;
+}
+
+function leaderPlayerNames(team) {
+  return Array.from({ length: team.playerCount ?? 1 }, (_, index) => {
+    const name = team.playerNames?.[index];
+    return typeof name === "string" && name.trim() ? name.trim() : `Speler ${index + 1}`;
+  }).join(", ");
+}
+
+// Wachtpaneel van het team: bewijs is gestuurd, spelleider moet nog beslissen.
+function renderProofWaitPanel(task, awaiting) {
+  return `
+    <section class="panel action-panel proof-wait-panel">
+      <span class="field-label">Wachten op goedkeuring</span>
+      <h2 class="task-title">${esc(task.title)}</h2>
+      <div class="wait-timer proof-wait-timer" data-wait-since="${esc(awaiting.sentAt)}" role="timer">${fmtTime(proofWaitSeconds(awaiting.sentAt))}</div>
+      <p>Jullie spelleider bekijkt jullie bewijs.</p>
+    </section>
+  `;
+}
+
+// Eenmalige volschermkaart voor een team in de lobby van een spelleider-kamer.
+function renderProofIntro(state, teamState) {
+  if (!state.leaderMode || state.isDemo || teamState.proofIntroAck) {
+    return "";
+  }
+  return `
+    <div class="popup-overlay proof-intro">
+      <div class="popup-card popup-info">
+        <span class="popup-kind">Spelleider</span>
+        <h2>Bewijs sturen</h2>
+        <div class="popup-body">Stuur bij elke opdracht een foto of filmpje naar jullie spelleider. Pas na goedkeuring mogen jullie verder.</div>
+        <button class="button primary big" data-action="proof-intro-ack">Begrepen</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ----- Instap: menu, aanmaken, meedoen als spelleider ----- */
+
+function renderLeaderEntry() {
+  if (ui.screen === "leader-create") {
+    app.innerHTML = `
+      <div class="screen screen-create screen-leader-entry">
+        ${brandHeader("Nieuwe spelkamer (spelleider)")}
+        <form class="panel entry-form" data-form="leader-create">
+          <p class="panel-sub">Je maakt de kamer aan zonder eigen team en speelt niet mee. Teams doen mee met de spelcode.</p>
+          <div class="field">
+            <span class="field-label">Spelstand</span>
+            <div class="mode-grid">
+              ${GAME_MODES.map((mode) => `
+                <button
+                  type="button"
+                  class="mode-card ${mode.id === ui.createModeId ? "is-selected" : ""}"
+                  data-action="create-mode"
+                  data-mode-id="${mode.id}"
+                >
+                  <strong class="mode-name">${esc(mode.label)}</strong>
+                  <span class="mode-turns">${mode.turns} worpen</span>
+                  <span class="mode-tagline">${esc(mode.tagline)}</span>
+                </button>
+              `).join("")}
+            </div>
+          </div>
+          ${leaderUi.error ? `<p class="form-error">${esc(leaderUi.error)}</p>` : ""}
+          <button class="button primary big" type="submit">Spelkamer aanmaken</button>
+          <button class="button link" type="button" data-action="nav-leader">Terug</button>
+        </form>
+      </div>
+    `;
+    return;
+  }
+
+  if (ui.screen === "leader-join") {
+    app.innerHTML = `
+      <div class="screen screen-join screen-leader-entry">
+        ${brandHeader("Meedoen als spelleider")}
+        <form class="panel entry-form" data-form="leader-join">
+          <label class="field">
+            <span class="field-label">Spelcode</span>
+            <input name="leaderRoomCode" maxlength="8" required placeholder="Bijv. K7X2PQ" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(leaderUi.roomCode)}" />
+          </label>
+          <label class="field">
+            <span class="field-label">Spelleiderscode</span>
+            <input name="leaderCodeInput" maxlength="8" required placeholder="8 tekens" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase" value="${esc(leaderUi.leaderCode)}" />
+          </label>
+          ${leaderUi.error ? `<p class="form-error">${esc(leaderUi.error)}</p>` : ""}
+          <button class="button primary big" type="submit" ${leaderUi.busy ? "disabled" : ""}>${leaderUi.busy ? "Zoeken…" : "Meedoen als spelleider"}</button>
+          <button class="button link" type="button" data-action="nav-leader">Terug</button>
+        </form>
+      </div>
+    `;
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="screen screen-home screen-leader-entry">
+      ${brandHeader("Spelleider")}
+      <div class="home-actions">
+        <button class="button primary big" data-action="leader-nav-create">Nieuwe spelkamer aanmaken</button>
+        <button class="button ghost big" data-action="leader-nav-join">Meedoen als spelleider</button>
+        <button class="button link" data-action="nav-home">Terug</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ----- Spelleiderscherm ----- */
+
+function renderLeader(state) {
+  // Een open dialoog die niet meer klopt (bewijs intussen beslist) laten vervallen.
+  if (
+    ui.dialog?.type === "reject-proof" &&
+    !getPendingApprovals(state).some((entry) => entry.teamState.id === ui.dialog.teamId)
+  ) {
+    ui.dialog = null;
+  }
+
+  if (state.phase === GAME_PHASE.LOBBY) {
+    setLeaderTitle(0);
+    renderLeaderLobby(state);
+  } else if (state.phase === GAME_PHASE.COUNTDOWN) {
+    setLeaderTitle(0);
+    renderCountdown(state, null);
+  } else if (state.phase === GAME_PHASE.ENDED) {
+    setLeaderTitle(0);
+    renderLeaderEnded(state);
+  } else {
+    renderLeaderGame(state);
+  }
+}
+
+function renderLeaderLobby(state) {
+  const mode = findGameMode(state.modeId);
+  const teams = Object.values(state.teams).sort((a, b) => a.joinedAt - b.joinedAt);
+  const notAcked = teams.filter((team) => !team.proofIntroAck);
+  const canStart = teams.length >= GAME_CONFIG.minTeams;
+
+  app.innerHTML = `
+    <div class="screen screen-lobby screen-leader">
+      ${brandHeader("Spelleider")}
+
+      <section class="panel room-panel">
+        <span class="tape tape-tr"></span>
+        <p class="room-hint hand">Teams doen mee met deze code 👇</p>
+        <div class="room-code-row">
+          <div>
+            <span class="field-label">Spelcode</span>
+            <strong class="room-code big-code">${esc(state.roomCode)}</strong>
+          </div>
+          <button class="button ghost" data-action="copy-code">${ui.copied ? "Gekopieerd!" : "Kopieer"}</button>
+        </div>
+        <p class="room-meta">Spelstand: <strong>${esc(mode.label)}</strong> · ${mode.turns} worpen per team ${syncBadge(state)}</p>
+      </section>
+
+      <section class="panel leader-code-panel">
+        <span class="field-label">Spelleiderscode</span>
+        <strong class="room-code leader-code">${esc(getSession()?.leaderCode || "--------")}</strong>
+        <p class="panel-sub">Deel deze met de andere spelleider.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Aangemelde teams (${teams.length})</h2>
+        ${teams.length ? `
+          <ul class="leader-team-list">
+            ${teams.map((team) => `
+              <li class="leader-team-row" style="--team-accent:${findTeamColor(team.colorId).hex}">
+                <span class="team-chip-dot"></span>
+                <span class="leader-team-main">
+                  <strong class="lobby-team-name">${esc(team.name)}</strong>
+                  <span class="leader-team-players">${esc(leaderPlayerNames(team))}</span>
+                </span>
+                <span class="proof-ack ${team.proofIntroAck ? "is-ack" : ""}">${team.proofIntroAck ? "Begrepen" : "Nog niet begrepen"}</span>
+              </li>
+            `).join("")}
+          </ul>
+        ` : '<p class="panel-sub">Nog geen teams aangemeld. Zij doen mee via "Meedoen met spelcode".</p>'}
+      </section>
+
+      <section class="panel lobby-wait-panel">
+        ${teams.length && notAcked.length ? `<p class="leader-warning">${notAcked.length === 1 ? "1 team heeft" : `${notAcked.length} teams hebben`} "Begrepen" nog niet getikt. Je kunt toch starten.</p>` : ""}
+        <button class="button primary big" data-action="leader-start" ${canStart ? "" : "disabled"}>Start het spel</button>
+        ${canStart ? "" : '<p class="panel-sub">Er is minstens 1 team nodig.</p>'}
+      </section>
+
+      <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
+      ${renderLeaderDialog(state)}
+    </div>
+  `;
+}
+
+function renderLeaderGame(state) {
+  const pending = getPendingApprovals(state);
+  const ranking = getRanking(state);
+  const events = (state.eventLog ?? []).slice(-8).reverse();
+
+  // Nieuw wachtend bewijs: geluid + trilling (niet bij de eerste weergave).
+  const keys = new Set(pending.map((entry) => `${entry.teamState.id}:${entry.sentAt}`));
+  if (leaderUi.seen && [...keys].some((key) => !leaderUi.seen.has(key))) {
+    feedback.powerup();
+  }
+  leaderUi.seen = keys;
+  setLeaderTitle(pending.length);
+
+  app.innerHTML = `
+    <div class="screen screen-game screen-leader">
+      <header class="leader-header">
+        <div>
+          <span class="field-label">Spelleider</span>
+          <strong class="room-code leader-header-code">${esc(state.roomCode)}</strong>
+        </div>
+        <div class="game-header-tools">
+          ${syncBadge(state)}
+          <button class="icon-button" data-action="open-settings" aria-label="Instellingen">⚙</button>
+        </div>
+      </header>
+
+      <section class="panel approval-panel">
+        <h2>Wachten op goedkeuring${pending.length ? ` (${pending.length})` : ""}</h2>
+        ${pending.length ? pending.map(({ teamState, task, sentAt }) => {
+          const awaiting = teamState.awaitingApproval;
+          const excerpt = proofExcerpt(task.body);
+          return `
+            <article class="approval-card" style="--team-accent:${findTeamColor(teamState.colorId).hex}">
+              <header class="approval-head">
+                ${teamChip(teamState)}
+                <span class="approval-wait" data-wait-since="${esc(sentAt)}" role="timer">${fmtTime(proofWaitSeconds(sentAt))}</span>
+              </header>
+              <h3 class="approval-task">${esc(task.title)}</h3>
+              ${excerpt ? `<p class="approval-excerpt">${esc(excerpt)}</p>` : ""}
+              ${awaiting?.withBonus && task.bonusPowerUp ? `<p class="approval-bonus">Met bonus: ${esc(task.bonusPowerUp.label)}</p>` : ""}
+              <div class="approval-actions">
+                <button class="button primary big" data-action="leader-approve" data-team-id="${esc(teamState.id)}">Goedkeuren</button>
+                <button class="button ghost" data-action="leader-ask-reject" data-team-id="${esc(teamState.id)}">Afkeuren</button>
+              </div>
+            </article>
+          `;
+        }).join("") : '<p class="approval-empty">Geen teams wachten op goedkeuring.</p>'}
+      </section>
+
+      ${renderLeaderStanding(ranking)}
+
+      ${events.length ? `
+        <section class="panel eventlog-panel">
+          <ul class="eventlog-list">
+            ${events.map((event) => `<li>${esc(event.text)}</li>`).join("")}
+          </ul>
+        </section>
+      ` : ""}
+
+      <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
+      ${renderLeaderDialog(state)}
+    </div>
+  `;
+}
+
+function renderLeaderStanding(ranking) {
+  return `
+    <section class="panel leader-standing">
+      <h2>Stand</h2>
+      <ol class="leader-standing-list">
+        ${ranking.map(({ teamState: team }) => `
+          <li style="--team-accent:${findTeamColor(team.colorId).hex}">
+            <span class="team-chip-dot"></span>
+            <span class="leader-standing-name">${esc(team.name)}</span>
+            <span class="leader-standing-stats">vak ${team.position} · ${team.completedRounds} ${team.completedRounds === 1 ? "ronde" : "rondes"}</span>
+            <span class="leader-standing-status">${esc(team.awaitingApproval ? "Wacht op bewijs" : STATUS_META[team.status]?.label ?? team.status)}</span>
+          </li>
+        `).join("")}
+      </ol>
+    </section>
+  `;
+}
+
+function renderLeaderEnded(state) {
+  const ranking = getRanking(state);
+  app.innerHTML = `
+    <div class="screen screen-ended screen-leader">
+      <section class="panel">
+        <h2>Eindstand</h2>
+        <ol class="ranking-list">
+          ${ranking.map(({ teamState: team }, index) => `
+            <li style="--team-accent:${findTeamColor(team.colorId).hex}">
+              <span class="ranking-place">${index + 1}</span>
+              <span class="team-chip-dot"></span>
+              <span class="ranking-name">${esc(team.name)}</span>
+              <span class="ranking-stats">${team.completedRounds} ${team.completedRounds === 1 ? "ronde" : "rondes"} · vak ${team.position}</span>
+            </li>
+          `).join("")}
+        </ol>
+        <p class="panel-sub">Winnaar = meeste rondes, dan hoogste vak, dan wie daar het eerst was.</p>
+      </section>
+      <button class="button primary big" data-action="leave-room">Spelkamer verlaten</button>
+    </div>
+  `;
+}
+
+// Dialogen op het spelleiderscherm: afkeuren bevestigen, verlaten, instellingen.
+function renderLeaderDialog(state) {
+  if (ui.dialog?.type === "reject-proof") {
+    const team = state.teams[ui.dialog.teamId];
+    if (!team) {
+      return "";
+    }
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card popup-info">
+          <span class="popup-kind">Afkeuren</span>
+          <h2>Bewijs afkeuren?</h2>
+          <div class="popup-body"><strong>${esc(team.name)}</strong> krijgt de melding dat het bewijs niet is goedgekeurd en moet het opnieuw proberen of de opdracht overslaan (−${GAME_CONFIG.skipPenaltySteps} vakjes).</div>
+          <div class="stack-buttons">
+            <button class="button primary big" data-action="leader-reject-confirm" data-team-id="${esc(team.id)}">Ja, afkeuren</button>
+            <button class="button ghost" data-action="dialog-cancel">Annuleren</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if (ui.dialog?.type === "leave") {
+    return `
+      <div class="popup-overlay">
+        <div class="popup-card">
+          <span class="popup-kind">Spelkamer verlaten</span>
+          <h2>Weet je het zeker?</h2>
+          <div class="popup-body">Dit toestel verlaat de spelkamer. Met de spelcode en de spelleiderscode kun je later weer meedoen als spelleider.</div>
+          <div class="stack-buttons">
+            <button class="button primary big" data-action="leave-room">Ja, verlaten</button>
+            <button class="button ghost" data-action="dialog-cancel">Blijven</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  return renderDialog(state, null);
+}
+
+app.addEventListener("input", (event) => {
+  const input = event.target;
+  if (input?.name === "leaderRoomCode") {
+    leaderUi.roomCode = input.value;
+  } else if (input?.name === "leaderCodeInput") {
+    leaderUi.leaderCode = input.value;
+  }
+});
 
 /* ------------------------------------------------------------------ */
 /* Events                                                              */
@@ -1987,6 +2443,13 @@ app.addEventListener("click", (event) => {
       setFeedbackSetting("sound", !getFeedbackSettings().sound);
       render();
       break;
+    case "toggle-shake": {
+      const shake = window.zuipFx?.shake;
+      if (shake) {
+        Promise.resolve(shake.set(!shake.isOn())).finally(() => render());
+      }
+      break;
+    }
     case "toggle-vibration": {
       const next = !getFeedbackSettings().vibration;
       setFeedbackSetting("vibration", next);
@@ -2007,8 +2470,8 @@ app.addEventListener("click", (event) => {
       feedback.powerup();
       usePowerUp(session.teamId, target.dataset.powerupId);
       break;
-    case "dock17-reveal":
-      revealDock17Choices(session.teamId);
+    case "dock17-pick":
+      pickDock17Number(session.teamId, Number(target.dataset.number));
       break;
     case "vanouds-spin": {
       if (wheelSpin.active) {
@@ -2073,6 +2536,9 @@ app.addEventListener("click", (event) => {
     case "demo-powerups":
       demoGivePowerUps();
       break;
+    case "demo-angel":
+      demoAngel();
+      break;
     case "demo-attack":
       demoIncomingAttack(target.dataset.kind);
       break;
@@ -2084,6 +2550,51 @@ app.addEventListener("click", (event) => {
       break;
     case "demo-finish-bots":
       demoFinishOpponents();
+      break;
+    case "demo-leader-toggle":
+      demoSetLeaderMode(!getState()?.leaderMode);
+      break;
+    case "demo-leader-approve":
+      feedback.confirm();
+      approveProof(session.teamId);
+      break;
+    case "demo-leader-reject":
+      rejectProof(session.teamId);
+      break;
+    case "nav-leader":
+      ui.screen = "leader-menu";
+      leaderUi.error = "";
+      render();
+      break;
+    case "leader-nav-create":
+      ui.screen = "leader-create";
+      leaderUi.error = "";
+      render();
+      break;
+    case "leader-nav-join":
+      ui.screen = "leader-join";
+      leaderUi.error = "";
+      render();
+      break;
+    case "leader-start":
+      startGameAsLeader();
+      break;
+    case "leader-approve":
+      feedback.confirm();
+      approveProof(target.dataset.teamId);
+      break;
+    case "leader-ask-reject":
+      ui.dialog = { type: "reject-proof", teamId: target.dataset.teamId };
+      render();
+      break;
+    case "leader-reject-confirm":
+      ui.dialog = null;
+      rejectProof(target.dataset.teamId);
+      render();
+      break;
+    case "proof-intro-ack":
+      feedback.tap();
+      acknowledgeProofIntro(session.teamId);
       break;
     default:
       break;
@@ -2097,6 +2608,54 @@ app.addEventListener("submit", async (event) => {
   }
   event.preventDefault();
   const data = new FormData(form);
+
+  if (form.dataset.form === "leader-create") {
+    const result = createLeaderRoom({ modeId: ui.createModeId });
+    if (!result.ok) {
+      leaderUi.error = result.message ?? "Aanmaken is niet gelukt.";
+      render();
+      return;
+    }
+    leaderUi.error = "";
+    ui.screen = "home";
+    connectSync();
+    render();
+    return;
+  }
+
+  if (form.dataset.form === "leader-join") {
+    if (leaderUi.busy) {
+      return;
+    }
+    leaderUi.roomCode = normalizeRoomCode(data.get("leaderRoomCode"));
+    leaderUi.leaderCode = normalizeRoomCode(data.get("leaderCodeInput"));
+    leaderUi.error = "";
+    leaderUi.busy = true;
+    render();
+    const fetched = await fetchRoom(leaderUi.roomCode);
+    leaderUi.busy = false;
+    if (!fetched.ok) {
+      leaderUi.error = fetched.message;
+      render();
+      return;
+    }
+    const result = joinAsLeader({
+      roomCode: leaderUi.roomCode,
+      leaderCode: leaderUi.leaderCode,
+      roomState: fetched.state
+    });
+    if (!result.ok) {
+      leaderUi.error = result.message;
+      render();
+      return;
+    }
+    leaderUi.roomCode = "";
+    leaderUi.leaderCode = "";
+    ui.screen = "home";
+    connectSync();
+    render();
+    return;
+  }
 
   if (form.dataset.form === "create-room") {
     const result = createRoom({
@@ -2204,14 +2763,6 @@ app.addEventListener("change", (event) => {
     }
     return;
   }
-  const target = event.target.closest("[data-change]");
-  if (!target) {
-    return;
-  }
-  const session = getSession();
-  if (target.dataset.change === "dock17-number") {
-    updateDock17Choice(session.teamId, target.dataset.choiceId, target.value);
-  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -2292,6 +2843,7 @@ function updateVisibleTimers() {
 window.setInterval(() => {
   runClockTick();
   updateVisibleTimers();
+  updateProofTimers();
 }, 1000);
 
 // ?reset=1 en ?turbo=1 beginnen altijd met een schoon spel (geen oud spel hervatten).

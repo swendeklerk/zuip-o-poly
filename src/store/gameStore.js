@@ -10,6 +10,7 @@ import { CARD_DECKS, drawCard } from "../data/cards.js";
 import { CAFE_VAN_OUDS_WHEEL_OPTIONS, DOCK17_DRINKS } from "../data/tileAssignments.js";
 import { createTaskForTile } from "../data/tasks.js";
 import { findTileById } from "../data/tiles.js";
+import { sha256Hex } from "./sha256.js";
 import { GAME_PHASE, TEAM_STATUS } from "../data/statuses.js";
 import {
   loadRemoteGameState,
@@ -26,6 +27,27 @@ let remoteUnsubscribe = null;
 let remotePollInterval = null;
 let remoteFocusListenersReady = false;
 let lastLocalSaveAt = 0;
+
+// Gratis verrassing (power-up) na normale beurt 3 en 18, met een wisselende titel.
+const GIFT_TITLES = [
+  "Cadeautje van de beer",
+  "Gratis van het huis",
+  "De kroegbaas is gul",
+  "Meevaller!",
+  "Een knipoog van het bord",
+  "Verrassing uit de tap",
+  "Jullie hebben het verdiend",
+  "De beer is trots op jullie"
+];
+const ANGEL_TURNS = [3, 18];
+const ANGEL_POWER_UPS = [
+  { type: "skip_task", label: "Opdracht overslaan", body: "Sla een opdracht over zonder straf. Daarna een bonusworp." },
+  { type: "skip_free", label: "Gratis skip", body: "Skip één opdracht zonder de 2-vakjes-straf." },
+  { type: "shield", label: "Geluksvogel", body: "Blokkeert automatisch de eerstvolgende Kans-, Fonds-, Wisselstation- of bonusactie van een ander team." },
+  { type: "jail_free", label: "Celvrij", body: "Direct uit de echte cel, zonder wachttijd en strafopdracht." },
+  { type: "uno_reverse", label: "Uno Reverse", body: "Wijs een ander team aan voor de wodka-Red Bull-opdracht." },
+  { type: "share_task", label: "Zuipmaatjes", body: "Kies een team dat dezelfde opdracht met jullie mee moet doen." }
+];
 
 function now() {
   return Date.now();
@@ -74,8 +96,22 @@ export function getSession() {
     const parsed = JSON.parse(raw);
     // Alleen de drie bekende velden, gevalideerd (geen willekeurige keys of typen).
     const roomCode = normalizeRoomCode(parsed?.roomCode);
+    if (!ROOM_CODE_PATTERN.test(roomCode)) {
+      return null;
+    }
+    // Spelleider-sessie: geen team, alleen de kamer en de rol.
+    if (parsed?.role === "leader") {
+      const savedCode = normalizeRoomCode(parsed?.leaderCode);
+      return {
+        roomCode,
+        teamId: null,
+        role: "leader",
+        sessionId: cleanId(parsed?.sessionId, ""),
+        leaderCode: LEADER_CODE_PATTERN.test(savedCode) ? savedCode : ""
+      };
+    }
     const teamId = cleanId(parsed?.teamId);
-    if (!ROOM_CODE_PATTERN.test(roomCode) || !teamId) {
+    if (!teamId) {
       return null;
     }
     return { roomCode, teamId, sessionId: cleanId(parsed?.sessionId, "") };
@@ -140,7 +176,12 @@ function createTeamState({ id, name, colorId, playerCount, playerNames }) {
     jailUntil: null,
     savedPowerUps: [],
     oncePerTeamCardIds: [],
+    angelsGiven: [],
     finishedAt: null,
+    // Spelleider-modus: bewijs verstuurd en wacht op goedkeuring / intro gezien.
+    awaitingApproval: null,
+    proofIntroAck: false,
+    lastProofDecidedSentAt: 0,
     teamSyncRevision: 0,
     teamSyncUpdatedAt: 0
   };
@@ -174,6 +215,14 @@ function createRoomState({ roomCode, modeId, starterTeamId }) {
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 const ID_PATTERN = /^[A-Za-z0-9_.:-]{1,80}$/;
 const ROOM_CODE_PATTERN = /^[A-Z0-9]{3,12}$/;
+const LEADER_CODE_PATTERN = /^[A-Z0-9]{5,8}$/;
+const LEADER_CODE_LENGTH = 8;
+const HEX64_PATTERN = /^[0-9a-f]{64}$/;
+
+// De spelleiderscode zelf staat nooit in de spelstand, alleen deze hash (per kamer gezouten).
+function leaderCodeHash(roomCode, leaderCode) {
+  return sha256Hex(`zuipopoly:${roomCode}:${leaderCode}`);
+}
 const WORD_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
 const MAX_TEXT = 2000;
 const MAX_NAME = 40;
@@ -344,8 +393,14 @@ function sanitizeTask(input) {
   if (task.specialFlow === "dock17") {
     task.dock17Choices = sanitizeChoiceList(task.dock17Choices, (choice) => {
       choice.number = choice.number === null ? null : cleanInt(choice.number, 1, 17, null);
-      choice.drink = cleanText(choice.drink, 80);
+      // Het drankje volgt altijd uit het getal (ook bij oude opgeslagen spellen).
+      choice.drink = choice.number ? dock17DrinkFor(choice.number) : "";
     });
+    // Oude opgeslagen spellen (select-flow): iedereen heeft al een getal maar de
+    // onthulling ontbrak. Rond dat af, anders blijft de bevestigknop op slot.
+    if (!task.dock17Revealed && task.dock17Choices.every((choice) => choice.number)) {
+      task.dock17Revealed = true;
+    }
   } else {
     delete task.dock17Choices;
   }
@@ -432,6 +487,23 @@ function sanitizePendingTasks(list) {
   return result;
 }
 
+// Bewijs dat op goedkeuring van de spelleider wacht. taskStartedAt koppelt het
+// bewijs aan precies deze opdracht (verdwijnt de opdracht, dan vervalt het ook).
+function sanitizeAwaitingApproval(value) {
+  if (!isPlainObject(value)) {
+    return null;
+  }
+  const sentAt = cleanTimestamp(value.sentAt, null);
+  if (!sentAt) {
+    return null;
+  }
+  return {
+    sentAt,
+    taskStartedAt: cleanTimestamp(value.taskStartedAt, 0),
+    withBonus: value.withBonus === true
+  };
+}
+
 function normalizeTeam(input) {
   const raw = isPlainObject(input) ? input : {};
   const id = cleanId(raw.id) ?? createId("team");
@@ -470,6 +542,16 @@ function normalizeTeam(input) {
   team.oncePerTeamCardIds = Array.isArray(raw.oncePerTeamCardIds)
     ? raw.oncePerTeamCardIds.slice(0, 50).map((value) => cleanId(value)).filter(Boolean)
     : [];
+  // Engeltje-momenten (beurtnummers) die al zijn uitgedeeld; alleen bekende momenten.
+  // Een team uit een spel van vóór het engeltje (veld ontbreekt) krijgt de momenten die al
+  // voorbij zijn niet alsnog; die gelden als al uitgedeeld.
+  team.angelsGiven = Array.isArray(raw.angelsGiven)
+    ? ANGEL_TURNS.filter((turn) => raw.angelsGiven.includes(turn))
+    : ANGEL_TURNS.filter((turn) => team.normalTurnsUsed >= turn);
+  // Spelleider-modus: bewijs onderweg (alleen bekende velden) en intro gezien.
+  team.awaitingApproval = sanitizeAwaitingApproval(raw.awaitingApproval);
+  team.proofIntroAck = raw.proofIntroAck === true;
+  team.lastProofDecidedSentAt = cleanTimestamp(raw.lastProofDecidedSentAt, 0);
   team.teamSyncRevision = cleanInt(raw.teamSyncRevision, 0, 1e9, 0);
   team.teamSyncUpdatedAt = cleanTimestamp(raw.teamSyncUpdatedAt, 0);
   return team;
@@ -509,6 +591,26 @@ function normalizeState(input) {
   state.endedAt = cleanTimestamp(input.endedAt, null);
   state.syncRevision = cleanInt(input.syncRevision, 0, 1e9, 0);
   state.syncUpdatedAt = cleanTimestamp(input.syncUpdatedAt, 0);
+  // Spelleider-modus: alleen een echte boolean en een code van 5 tekens.
+  if (input.leaderMode === true) {
+    state.leaderMode = true;
+  } else {
+    delete state.leaderMode;
+  }
+  // Alleen de hash blijft bewaard. Een oude kamer met een leesbare code wordt hier omgezet.
+  const legacyCode = normalizeRoomCode(input.leaderCode);
+  let codeHash = typeof input.leaderCodeHash === "string" && HEX64_PATTERN.test(input.leaderCodeHash)
+    ? input.leaderCodeHash
+    : "";
+  if (!codeHash && LEADER_CODE_PATTERN.test(legacyCode)) {
+    codeHash = leaderCodeHash(roomCode, legacyCode);
+  }
+  delete state.leaderCode;
+  if (codeHash) {
+    state.leaderCodeHash = codeHash;
+  } else {
+    delete state.leaderCodeHash;
+  }
   // De testmodus (teleporteren, kaarten kiezen) bestaat alleen lokaal; een
   // remote of aangepaste state mag dit nooit voor een echte spelkamer aanzetten.
   if (input.isDemo === true && roomCode === DEMO_ROOM_CODE) {
@@ -641,6 +743,24 @@ function isRemoteTeamNewer(remoteTeam, localTeam) {
   return remoteTeam.teamSyncUpdatedAt > localTeam.teamSyncUpdatedAt && now() - lastLocalSaveAt > 5000;
 }
 
+// Staat er aan de ene kant nog een bewijs te wachten (sentAt = S) terwijl de
+// andere kant dat bewijs al heeft beslist (lastProofDecidedSentAt >= S)? Dan
+// is de beslissende kant de enige juiste; anders null (gewone revisie-regel).
+function pickProofDecision(remoteTeam, localTeam) {
+  if (!remoteTeam || !localTeam) {
+    return null;
+  }
+  const remoteWaiting = remoteTeam.awaitingApproval?.sentAt ?? 0;
+  const localWaiting = localTeam.awaitingApproval?.sentAt ?? 0;
+  if (remoteWaiting && (localTeam.lastProofDecidedSentAt ?? 0) >= remoteWaiting && !localWaiting) {
+    return localTeam;
+  }
+  if (localWaiting && (remoteTeam.lastProofDecidedSentAt ?? 0) >= localWaiting && !remoteWaiting) {
+    return remoteTeam;
+  }
+  return null;
+}
+
 function mergeRemoteState(remote, local) {
   if (!local) {
     return remote;
@@ -656,6 +776,14 @@ function mergeRemoteState(remote, local) {
   for (const teamId of teamIds) {
     const remoteTeam = remote.teams[teamId];
     const localTeam = local.teams[teamId];
+    // Een beslissing van de spelleider (goed- of afkeuren) wint altijd van een
+    // gelijktijdige schrijfactie van het team die nog van het oude bewijs uitgaat,
+    // ook als de teamrevisies gelijk of omgekeerd liggen.
+    const decided = pickProofDecision(remoteTeam, localTeam);
+    if (decided) {
+      merged.teams[teamId] = decided;
+      continue;
+    }
     merged.teams[teamId] = isRemoteTeamNewer(remoteTeam, localTeam)
       ? remoteTeam ?? localTeam
       : localTeam ?? remoteTeam;
@@ -833,6 +961,78 @@ export function createRoom({ modeId, teamName, colorId, playerCount, playerNames
   window.localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, teamId, sessionId }));
   saveState(state, null);
   return { ok: true, roomCode, teamId };
+}
+
+function createLeaderCode() {
+  const length = LEADER_CODE_LENGTH;
+  const bytes = new Uint32Array(length);
+  if (window.crypto?.getRandomValues) {
+    window.crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < length; i += 1) {
+      bytes[i] = Math.floor(Math.random() * ROOM_CODE_ALPHABET.length);
+    }
+  }
+  let code = "";
+  for (let i = 0; i < length; i += 1) {
+    code += ROOM_CODE_ALPHABET[bytes[i] % ROOM_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+// Spelleider maakt een kamer ZONDER eigen team. De spelleiderscode staat leesbaar
+// in de state: een eerlijkheidscode, geen echte beveiliging.
+export function createLeaderRoom({ modeId }) {
+  const roomCode = createRoomCode();
+  const sessionId = createId("session");
+  let state = createRoomState({ roomCode, modeId, starterTeamId: null });
+  const leaderCode = createLeaderCode();
+  state.leaderMode = true;
+  state.leaderCodeHash = leaderCodeHash(roomCode, leaderCode);
+  state = logEvent(state, "De spelleider heeft de spelkamer aangemaakt.");
+
+  // De leesbare code blijft alleen op dit toestel (in de sessie), zodat je hem kunt doorgeven.
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify({ roomCode, role: "leader", sessionId, leaderCode }));
+  saveState(state, null);
+  return { ok: true, roomCode, leaderCode };
+}
+
+// Tweede (of herstelde) spelleider: spelcode + spelleiderscode.
+export function joinAsLeader({ roomCode, leaderCode, roomState = null }) {
+  const code = normalizeRoomCode(roomCode);
+  const enteredCode = normalizeRoomCode(leaderCode);
+
+  let state = null;
+  const existingRaw = window.localStorage.getItem(storageKey(code));
+  if (existingRaw) {
+    try {
+      state = normalizeState(JSON.parse(existingRaw));
+    } catch {
+      state = null;
+    }
+  }
+  state = state ?? (roomState ? normalizeState(roomState) : null);
+  if (!state) {
+    return { ok: false, message: "Spelkamer niet gevonden." };
+  }
+  if (!state.leaderMode || !state.leaderCodeHash) {
+    return { ok: false, message: "Dit is geen spelkamer met spelleider." };
+  }
+  if (!enteredCode || leaderCodeHash(code, enteredCode) !== state.leaderCodeHash) {
+    return { ok: false, message: "Deze spelleiderscode klopt niet." };
+  }
+
+  window.localStorage.setItem(storageKey(code), JSON.stringify(state));
+  window.localStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({ roomCode: code, role: "leader", sessionId: createId("session"), leaderCode: enteredCode })
+  );
+  emit();
+  return { ok: true, roomCode: code };
+}
+
+export function isLeaderSession(session = getSession()) {
+  return session?.role === "leader";
 }
 
 export async function fetchRoom(roomCode) {
@@ -1021,6 +1221,26 @@ export function startGame(teamId) {
   });
 }
 
+// Spelleider start het spel (zonder starter-team); daarna loopt dezelfde countdown.
+export function startGameAsLeader() {
+  const session = getSession();
+  if (!isLeaderSession(session)) {
+    return null;
+  }
+  return updateState((state) => {
+    if (!state.leaderMode || state.phase !== GAME_PHASE.LOBBY) {
+      return state;
+    }
+    if (Object.keys(state.teams).length < GAME_CONFIG.minTeams) {
+      return state;
+    }
+    return logEvent(
+      { ...state, phase: GAME_PHASE.COUNTDOWN, countdownStartedAt: now() },
+      "De spelleider start het spel. Countdown loopt."
+    );
+  });
+}
+
 export function getCountdownRemaining(state) {
   if (state?.phase !== GAME_PHASE.COUNTDOWN || !state.countdownStartedAt) {
     return null;
@@ -1068,6 +1288,73 @@ function isTeamDone(state, teamState) {
   );
 }
 
+// Welk engeltje-moment (3 of 18) is voor dit team aan de beurt? null = geen.
+// Bonusworpen tellen niet mee (normalTurnsUsed); Gezellig (15) heeft geen beurt 18.
+function dueAngelMoment(state, teamState) {
+  if (
+    !teamState ||
+    teamState.status !== TEAM_STATUS.CAN_ROLL ||
+    teamState.currentTask ||
+    teamState.activePopup ||
+    String(teamState.activeSessionId ?? "").startsWith("bot_")
+  ) {
+    return null;
+  }
+  const turns = maxTurnsForState(state);
+  const given = teamState.angelsGiven ?? [];
+  return (
+    ANGEL_TURNS.find(
+      (turn) => turn <= turns && (teamState.normalTurnsUsed ?? 0) >= turn && !given.includes(turn)
+    ) ?? null
+  );
+}
+
+// Geeft een willekeurige power-up + popup + eventlog-regel. moment = 3 of 18
+// (wordt vastgelegd in angelsGiven), of null voor de testknop.
+function giveAngelPowerUp(state, teamId, moment = null) {
+  const teamState = state.teams[teamId];
+  if (!teamState) {
+    return state;
+  }
+  // Per team en moment dezelfde power-up, ook als twee toestellen tegelijk rekenen.
+  // De testknop (moment null) blijft willekeurig.
+  let seed = 2166136261;
+  for (const char of `${teamId}:${moment}`) {
+    seed = Math.imul(seed ^ char.charCodeAt(0), 16777619) >>> 0;
+  }
+  const pick =
+    moment === null
+      ? ANGEL_POWER_UPS[Math.floor(Math.random() * ANGEL_POWER_UPS.length)]
+      : ANGEL_POWER_UPS[seed % ANGEL_POWER_UPS.length];
+  const given = teamState.angelsGiven ?? [];
+  const angelsGiven = moment !== null && !given.includes(moment) ? [...given, moment] : given;
+  const next = {
+    ...teamState,
+    angelsGiven,
+    savedPowerUps: [
+      ...getSavedPowerUps(teamState),
+      {
+        id: moment === null ? `angel-${pick.type}-${now()}` : `angel-${pick.type}-${moment}`,
+        cardId: `angel-${pick.type}`,
+        title: pick.label,
+        label: pick.label,
+        body: pick.body,
+        type: pick.type
+      }
+    ],
+    activePopup: {
+      title: GIFT_TITLES[(seed >>> 8) % GIFT_TITLES.length],
+      body: `Gratis power-up omdat jullie goed bezig zijn! Jullie hebben ${pick.label} gekregen.`,
+      kind: "info",
+      stage: "detail"
+    }
+  };
+  return logEvent(
+    { ...state, teams: { ...state.teams, [teamId]: next } },
+    `${teamState.name} kreeg een gratis verrassing: ${pick.label}.`
+  );
+}
+
 function tickState(state) {
   if (!state) {
     return state;
@@ -1101,6 +1388,17 @@ function tickState(state) {
   }
 
   let nextState = state;
+
+  // Wachtend bewijs dat niet meer bij de lopende opdracht hoort (aanval,
+  // verplaatsing, spelleidermodus uit) vervalt, zodat niemand blijft hangen.
+  for (const [teamId, teamState] of Object.entries(nextState.teams)) {
+    if (teamState.awaitingApproval && (!nextState.leaderMode || !isProofCurrent(teamState))) {
+      nextState = {
+        ...nextState,
+        teams: { ...nextState.teams, [teamId]: { ...teamState, awaitingApproval: null } }
+      };
+    }
+  }
 
   for (const [teamId, teamState] of Object.entries(nextState.teams)) {
     // Wachttimers (aanval / Wisselstation) aflopen.
@@ -1156,6 +1454,15 @@ function tickState(state) {
   for (const [teamId, teamState] of Object.entries(nextState.teams)) {
     if (teamState.status === TEAM_STATUS.TASK_ACTIVE && teamState.currentTask?.pendingTileId) {
       nextState = activatePendingTileIfNeeded(nextState, teamId);
+    }
+  }
+
+  // Engeltje uit de lucht: pas als het team rustig weer mag gooien (geen popup,
+  // geen lopende opdracht), zodat er niets overschreven of onderbroken wordt.
+  for (const [teamId, teamState] of Object.entries(nextState.teams)) {
+    const moment = dueAngelMoment(nextState, teamState);
+    if (moment !== null) {
+      nextState = giveAngelPowerUp(nextState, teamId, moment);
     }
   }
 
@@ -1284,6 +1591,10 @@ function createTaskFromCard(card, presentation, teamState) {
   }
 
   return base;
+}
+
+function dock17DrinkFor(number) {
+  return DOCK17_DRINKS.find((item) => item.id === Number(number))?.drink ?? "Onbekend drankje";
 }
 
 function withDock17Meta(task, teamState, tileId) {
@@ -1709,8 +2020,11 @@ export function rollDice(teamId, forcedRoll = null) {
   });
 }
 
-export function confirmTask(teamId, { withBonus = false } = {}) {
-  return updateState((state) => {
+// De eigenlijke afronding van een opdracht, als reducer (state => state). Geeft
+// dezelfde `state` terug als afronden nu niet mag. Wordt gebruikt door het team
+// zelf (zonder spelleider) en door approveProof (met spelleider).
+function confirmTaskReducer(teamId, withBonus) {
+  return (state) => {
     const teamState = state.teams[teamId];
     const task = teamState?.currentTask;
     if (!task || teamState.status !== TEAM_STATUS.TASK_ACTIVE) {
@@ -1771,6 +2085,148 @@ export function confirmTask(teamId, { withBonus = false } = {}) {
     );
 
     return activatePendingTileIfNeeded(confirmedState, teamId);
+  };
+}
+
+export function confirmTask(teamId, { withBonus = false } = {}) {
+  return updateState((state) => {
+    const reduce = confirmTaskReducer(teamId, withBonus);
+    if (!state.leaderMode) {
+      return reduce(state);
+    }
+    // Met spelleider: "Bewijs gestuurd" voltooit niets, maar zet het team in de
+    // wacht. Alle bestaande voorwaarden (minimumtimer, Dock 17, Rad) gelden eerst.
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (!task || teamState.status !== TEAM_STATUS.TASK_ACTIVE || teamState.awaitingApproval) {
+      return state;
+    }
+    if (task.pendingTileId) {
+      return reduce(state); // wachtrij-marker: gewoon doorlopen, geen bewijs nodig
+    }
+    if (reduce(state) === state) {
+      return state; // afronden mag nu nog niet
+    }
+    return {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: {
+          ...teamState,
+          awaitingApproval: {
+            sentAt: now(),
+            taskStartedAt: task.startedAt ?? 0,
+            withBonus: Boolean(withBonus && task.bonusPowerUp)
+          }
+        }
+      }
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Spelleider: bewijs goed- of afkeuren                                */
+/* ------------------------------------------------------------------ */
+
+// Hoort het wachtende bewijs nog bij de lopende opdracht? Een aanval of
+// verplaatsing kan de opdracht hebben laten vervallen.
+function isProofCurrent(teamState) {
+  const awaiting = teamState?.awaitingApproval;
+  const task = teamState?.currentTask;
+  return Boolean(
+    awaiting &&
+      task &&
+      teamState.status === TEAM_STATUS.TASK_ACTIVE &&
+      (task.startedAt ?? 0) === awaiting.taskStartedAt
+  );
+}
+
+// Alleen een spelleider (of de lokale testmodus) mag bewijs beoordelen.
+function canJudgeProof(state) {
+  return Boolean(state?.leaderMode && (state.isDemo || isLeaderSession()));
+}
+
+// Wachtende teams, oudste eerst, voor het spelleiderscherm.
+export function getPendingApprovals(state) {
+  if (!state?.leaderMode || state.phase !== GAME_PHASE.RUNNING) {
+    return [];
+  }
+  return Object.values(state.teams)
+    .filter((teamState) => isProofCurrent(teamState))
+    .map((teamState) => ({
+      teamState,
+      task: teamState.currentTask,
+      sentAt: teamState.awaitingApproval.sentAt
+    }))
+    .sort((a, b) => a.sentAt - b.sentAt);
+}
+
+export function approveProof(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const awaiting = teamState?.awaitingApproval;
+    // Idempotent: wacht het team niet (meer), dan gebeurt er niets.
+    if (!awaiting || !canJudgeProof(state)) {
+      return state;
+    }
+    const decided = {
+      ...state,
+      teams: {
+        ...state.teams,
+        [teamId]: { ...teamState, awaitingApproval: null, lastProofDecidedSentAt: awaiting.sentAt }
+      }
+    };
+    if (!isProofCurrent(teamState)) {
+      return decided; // opdracht is intussen vervallen: alleen het wachten opruimen
+    }
+    return confirmTaskReducer(teamId, awaiting.withBonus)(
+      logEvent(decided, `De spelleider keurde het bewijs van ${teamState.name} goed.`)
+    );
+  });
+}
+
+export function rejectProof(teamId, reason = "") {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const awaiting = teamState?.awaitingApproval;
+    if (!awaiting || !canJudgeProof(state)) {
+      return state;
+    }
+    const why = cleanText(reason, 200).trim();
+    const current = isProofCurrent(teamState);
+    const next = {
+      ...teamState,
+      awaitingApproval: null,
+      lastProofDecidedSentAt: awaiting.sentAt,
+      activePopup: current
+        ? {
+            title: "Bewijs afgekeurd",
+            body:
+              "Jullie spelleider heeft het bewijs niet goedgekeurd. Probeer het opnieuw of sla de opdracht over (-2 vakjes)." +
+              (why ? `\n\nReden: ${why}` : ""),
+            kind: "info",
+            stage: "detail"
+          }
+        : teamState.activePopup
+    };
+    const decided = { ...state, teams: { ...state.teams, [teamId]: next } };
+    return current
+      ? logEvent(decided, `De spelleider keurde het bewijs van ${teamState.name} af.`)
+      : decided;
+  });
+}
+
+// Eenmalige uitleg in de lobby ("Bewijs sturen"); onthouden zodat hij niet terugkomt.
+export function acknowledgeProofIntro(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    if (!teamState || teamState.proofIntroAck) {
+      return state;
+    }
+    return {
+      ...state,
+      teams: { ...state.teams, [teamId]: { ...teamState, proofIntroAck: true } }
+    };
   });
 }
 
@@ -1781,6 +2237,10 @@ export function skipTask(teamId, { powerUpId = null } = {}) {
     const teamState = state.teams[teamId];
     const task = teamState?.currentTask;
     if (!task || teamState.status !== TEAM_STATUS.TASK_ACTIVE || task.skippable === false) {
+      return state;
+    }
+    // Tijdens het wachten op de spelleider kan er niet worden geskipt.
+    if (teamState.awaitingApproval) {
       return state;
     }
 
@@ -2324,7 +2784,7 @@ export function usePowerUp(teamId, powerUpId) {
   return updateState((state) => {
     const teamState = state.teams[teamId];
     const powerUp = teamState ? getSavedPowerUps(teamState).find((item) => item.id === powerUpId) : null;
-    if (!teamState || !powerUp) {
+    if (!teamState || !powerUp || teamState.awaitingApproval) {
       return state;
     }
 
@@ -2463,66 +2923,47 @@ export function revealPopupCard(teamId) {
 /* Speciale opdrachtflows (Dock 17 & Café Van Ouds)                    */
 /* ------------------------------------------------------------------ */
 
-export function updateDock17Choice(teamId, choiceId, number) {
+// Dock 17 om beurten: de speler die aan de beurt is (eerste zonder getal) kiest
+// een nog vrij getal en ziet direct zijn drankje. De volgorde en het "geen
+// dubbele getallen" worden hier afgedwongen, niet alleen in de UI.
+export function pickDock17Number(teamId, number) {
   return updateState((state) => {
     const teamState = state.teams[teamId];
     const task = teamState?.currentTask;
-    if (!teamState || task?.specialFlow !== "dock17" || task.dock17Revealed) {
+    if (
+      !teamState ||
+      teamState.status !== TEAM_STATUS.TASK_ACTIVE ||
+      task?.specialFlow !== "dock17" ||
+      task.dock17Revealed ||
+      !Array.isArray(task.dock17Choices)
+    ) {
       return state;
     }
-    const safeNumber = Math.min(Math.max(Number(number) || 1, 1), 17);
-    return {
-      ...state,
-      teams: {
-        ...state.teams,
-        [teamId]: {
-          ...teamState,
-          currentTask: {
-            ...task,
-            dock17Choices: task.dock17Choices.map((choice) =>
-              choice.id === choiceId ? { ...choice, number: safeNumber } : choice
-            )
-          }
-        }
-      }
+    const picked = Number(number);
+    if (!Number.isInteger(picked) || picked < 1 || picked > 17) {
+      return state;
+    }
+    const current = task.dock17Choices.find((choice) => !choice.number);
+    if (!current || task.dock17Choices.some((choice) => choice.number === picked)) {
+      return state;
+    }
+    const choices = task.dock17Choices.map((choice) =>
+      choice.id === current.id ? { ...choice, number: picked, drink: dock17DrinkFor(picked) } : choice
+    );
+    const allDone = choices.every((choice) => choice.number);
+    const nextTeam = {
+      ...teamState,
+      currentTask: { ...task, dock17Choices: choices, dock17Revealed: allDone }
     };
-  });
-}
-
-export function revealDock17Choices(teamId) {
-  return updateState((state) => {
-    const teamState = state.teams[teamId];
-    const task = teamState?.currentTask;
-    if (!teamState || task?.specialFlow !== "dock17" || task.dock17Revealed) {
-      return state;
-    }
-    const revealedChoices = task.dock17Choices.map((choice) => {
-      const number = Math.min(Math.max(Number(choice.number) || 1, 1), 17);
-      return {
-        ...choice,
-        number,
-        drink: DOCK17_DRINKS.find((item) => item.id === number)?.drink ?? "Onbekend drankje"
+    if (allDone) {
+      nextTeam.activePopup = {
+        title: "Dock17 onthuld",
+        body: choices.map((choice) => `${choice.name}: ${choice.number} = ${choice.drink}`).join(" | "),
+        kind: "task",
+        stage: "detail"
       };
-    });
-    const summary = revealedChoices
-      .map((choice) => `${choice.name}: ${choice.number} = ${choice.drink}`)
-      .join(" | ");
-    return {
-      ...state,
-      teams: {
-        ...state.teams,
-        [teamId]: {
-          ...teamState,
-          currentTask: { ...task, dock17Choices: revealedChoices, dock17Revealed: true },
-          activePopup: {
-            title: "Dock17 onthuld",
-            body: summary,
-            kind: "task",
-            stage: "detail"
-          }
-        }
-      }
-    };
+    }
+    return { ...state, teams: { ...state.teams, [teamId]: nextTeam } };
   });
 }
 
@@ -2770,6 +3211,17 @@ export function demoGivePowerUps() {
   });
 }
 
+// Geef direct een engeltje (willekeurige power-up + popup), los van beurt 3/18.
+export function demoAngel() {
+  return updateState((state) => {
+    const teamId = demoOwnTeamId();
+    if (!state.isDemo || !state.teams[teamId]) {
+      return state;
+    }
+    return giveAngelPowerUp(state, teamId, null);
+  });
+}
+
 // Simuleer dat een ander team jullie raakt (schild blokkeert automatisch).
 export function demoIncomingAttack(kind) {
   return updateState((state) => {
@@ -2932,6 +3384,21 @@ export function demoFinishOpponents() {
       }
     }
     return { ...state, teams };
+  });
+}
+
+// Testschakelaar: speel de testmodus met of zonder spelleider. Aanzetten kan
+// alleen lokaal; uitzetten ruimt wachtend bewijs op.
+export function demoSetLeaderMode(enabled) {
+  return updateState((state) => {
+    if (!state.isDemo) {
+      return state;
+    }
+    const teams = {};
+    for (const [id, team] of Object.entries(state.teams)) {
+      teams[id] = enabled ? team : { ...team, awaitingApproval: null };
+    }
+    return { ...state, teams, leaderMode: Boolean(enabled) };
   });
 }
 

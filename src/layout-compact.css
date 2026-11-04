@@ -1,0 +1,68 @@
+/* Compacte layout: alles in één oogopslag, hoofdactie blijft in beeld. */
+
+:root {
+  /* Vrije ruimte onderaan voor het knoppenbalkje (#features-dock). */
+  --dock-clearance: calc(74px + env(safe-area-inset-bottom));
+}
+
+/* Sticky werkt niet binnen overflow:hidden; clip knipt hetzelfde af zonder scrollcontainer. */
+.task-themed,
+.dice-panel,
+.board-grid {
+  overflow: clip;
+}
+
+/* De knoppen van de opdracht doen mee in de flex-kolom van de kaart, zodat de
+   hoofdknop kan vastplakken terwijl de tekst eronder doorscrolt. */
+.task-actions {
+  display: contents;
+}
+
+.task-actions > .button.primary.big,
+.dice-panel > .button.primary.big {
+  position: sticky;
+  bottom: var(--dock-clearance);
+  z-index: 6;
+  box-shadow: 0 0 0 8px var(--surface), 0 12px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* Uitgeschakeld mag niet doorzichtig zijn: de tekst eronder schuift er anders doorheen. */
+.task-actions > .button.primary.big:disabled,
+.dice-panel > .button.primary.big:disabled {
+  opacity: 1;
+  background: linear-gradient(180deg, #4a2028, #3a181f);
+  color: rgba(240, 238, 244, 0.6);
+}
+
+/* Kop en bord iets krapper. */
+.game-header {
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.screen-game {
+  gap: 10px;
+}
+
+.board-panel {
+  padding: 10px 12px 12px;
+  gap: 8px;
+  align-items: center;
+}
+
+.board-grid {
+  width: min(100%, 284px);
+}
+
+.board-legend {
+  width: 100%;
+  margin-top: 0;
+}
+
+.action-panel {
+  gap: 10px;
+}
+
+.dice-stage {
+  min-height: 96px;
+}
