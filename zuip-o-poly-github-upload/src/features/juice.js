@@ -931,8 +931,8 @@ export function init(ctx) {
     <p class="juice-hint">Houd 🍻 ingedrukt voor <b>Proost-modus</b>.</p>
     <p class="juice-hint juice-mute" hidden>🔇 Geluid staat uit. Zet het aan bij instellingen.</p>
   `;
-  (ctx.dock ?? ctx.root).append(btn);
-  ctx.root.append(panel);
+  // De kroeggeluiden-knop (🍻) en het geluidsmenu staan bewust niet meer in de app:
+  // btn en panel worden niet aan de pagina gehangen. De schud-uitnodiging werkt los daarvan.
 
   const muteHint = panel.querySelector(".juice-mute");
   const shakeSwitch = panel.querySelector('[data-juice="shake"]');
@@ -1367,6 +1367,12 @@ export function init(ctx) {
   /* ================================================================ */
 
   window.zuipFx = window.zuipFx || {};
+  // Schud-om-te-gooien: de instellingen van de app (⚙) laten dit aan- en uitzetten.
+  window.zuipFx.shake = {
+    available: shakeAvailable,
+    isOn: () => shakeStore.get() === "on",
+    set: (on) => setShake(Boolean(on))
+  };
   Object.assign(window.zuipFx, {
     fireworks: (opts) => fireworks(opts),
     confetti: (opts) => confetti(opts),

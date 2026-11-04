@@ -2715,3 +2715,290 @@ html.turbo .board-pawn {
   border-color: rgba(232, 0, 29, 0.55);
   box-shadow: 0 0 0 3px rgba(232, 0, 29, 0.15);
 }
+
+/* Dock 17 om beurten */
+
+.dock17-turn {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.dock17-turn strong {
+  color: var(--gold);
+}
+
+.dock17-done {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.dock17-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+
+.dock17-num {
+  min-height: 48px;
+  background: var(--surface3);
+  border: 1px solid var(--gold);
+  border-radius: 12px;
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.dock17-num:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.dock17-num.is-taken,
+.dock17-num:disabled {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-dim);
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+
+.dock17-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.dock17-result.is-latest {
+  background: rgba(255, 214, 0, 0.1);
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+/* ================================================================== */
+/* Spelleider-modus (.leader-, .approval-, .proof-)                    */
+/* ================================================================== */
+
+.proof-hint {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--gold);
+  background: rgba(255, 214, 0, 0.08);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.proof-wait-panel {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proof-wait-timer {
+  font-variant-numeric: tabular-nums;
+}
+
+.proof-intro .popup-card {
+  text-align: center;
+}
+
+.lobby-leader-wait {
+  margin: 0;
+  font-weight: 600;
+  text-align: center;
+}
+
+.leader-code-panel {
+  text-align: center;
+}
+
+.leader-code {
+  display: block;
+  margin: 6px 0;
+  font-size: 2.2rem;
+  letter-spacing: 0.18em;
+  color: var(--gold);
+}
+
+.leader-team-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.leader-team-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--team-accent);
+  border-radius: 10px;
+}
+
+.leader-team-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.leader-team-players {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proof-ack {
+  flex: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.proof-ack.is-ack {
+  color: var(--success);
+}
+
+.leader-warning {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 214, 0, 0.1);
+  color: var(--gold);
+  font-size: 0.9rem;
+}
+
+.leader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 2px;
+}
+
+.leader-header-code {
+  display: block;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+}
+
+.approval-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.approval-panel h2 {
+  margin: 0;
+}
+
+.approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--team-accent);
+  border-radius: 12px;
+}
+
+.approval-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.approval-wait {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.approval-task {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.approval-excerpt {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.approval-bonus {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--gold);
+}
+
+.approval-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.approval-empty {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.leader-standing-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.leader-standing-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border-left: 4px solid var(--team-accent);
+  border-radius: 8px;
+}
+
+.leader-standing-name {
+  font-weight: 700;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leader-standing-stats {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.leader-standing-status {
+  grid-column: 2 / 4;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}

@@ -342,7 +342,7 @@ export function init(ctx) {
   let room = null; // { code, createdAt, store, stats, lastJson }
   let currentState = null;
   let overlayEl = null;
-  let activeTab = "stats";
+  let activeTab = "stand";
   let renderQueued = false;
   let refreshTimer = null;
   let unseen = false;
@@ -607,7 +607,7 @@ export function init(ctx) {
   }
 
   function openOverlay(tab) {
-    if (tab && ["stats", "badges", "stand", "dagboek"].includes(tab)) activeTab = tab;
+    if (tab && ["badges", "stand", "dagboek"].includes(tab)) activeTab = tab;
     unseen = false;
     openBtn.classList.remove("has-new");
     if (!overlayEl) {
@@ -626,9 +626,8 @@ export function init(ctx) {
             <button type="button" class="aw-close" aria-label="Sluiten">✕</button>
           </header>
           <nav class="aw-tabs" role="tablist">
-            <button type="button" role="tab" data-aw-tab="stats">Stats</button>
-            <button type="button" role="tab" data-aw-tab="badges">Badges</button>
             <button type="button" role="tab" data-aw-tab="stand">Stand</button>
+            <button type="button" role="tab" data-aw-tab="badges">Badges</button>
             <button type="button" role="tab" data-aw-tab="dagboek">Dagboek</button>
           </nav>
           <div class="aw-body"></div>
@@ -662,7 +661,7 @@ export function init(ctx) {
     }
     const tabBtn = target.closest("[data-aw-tab]");
     if (tabBtn) {
-      activeTab = tabBtn.getAttribute("data-aw-tab") || "stats";
+      activeTab = tabBtn.getAttribute("data-aw-tab") || "stand";
       renderOverlay(true);
     }
   });
@@ -706,60 +705,12 @@ export function init(ctx) {
           ? renderBadgesTab(c)
           : activeTab === "stand"
             ? renderStandTab(c)
-            : activeTab === "dagboek"
-              ? renderDiaryTab(c)
-              : renderStatsTab(c);
+            : renderDiaryTab(c);
       body.innerHTML = html;
       body.scrollTop = resetScroll ? 0 : previousScroll;
     } catch (error) {
       console.warn("[awards] overlay renderen mislukt:", error);
     }
-  }
-
-  function statCell(value, label) {
-    return `<div class="aw-stat"><span class="aw-stat-v">${escHtml(value)}</span><span class="aw-stat-l">${escHtml(label)}</span></div>`;
-  }
-
-  function renderStatsTab(c) {
-    const { s, team, state } = c;
-    const maxTurns = findGameMode(state.modeId)?.turns ?? 20;
-    const rolls = Math.max(s.rolls, c.turns);
-    const avg = s.rolls ? fmtAvg(s.rollSum / s.rolls) : "–";
-    const maxFace = Math.max(1, ...s.faces.map(num));
-    const totalFaces = s.faces.reduce((a, n) => a + num(n), 0);
-    const dist = FACE_KEYS.map((face, i) => {
-      const n = num(s.faces[i]);
-      const pct = n ? Math.max(8, Math.round((n / maxFace) * 100)) : 0;
-      return `<div class="aw-dist-col"><span class="aw-dist-n">${n}</span><span class="aw-dist-track"><span class="aw-dist-bar" style="height:${pct}%"></span></span><span class="aw-dist-f">${face}</span></div>`;
-    }).join("");
-    const rankLine =
-      c.count >= 2 && c.rank
-        ? `Nu <b>#${c.rank}</b> van ${c.count} teams`
-        : "Nog geen concurrentie in beeld";
-    return `
-      <p class="aw-rankline">${rankLine} · ${c.turns}/${maxTurns} beurten</p>
-      <div class="aw-grid">
-        ${statCell(rolls, "Worpen")}
-        ${statCell(avg, "Gem. worp")}
-        ${statCell(fmtDuration(c.playMs), "Speeltijd")}
-        ${statCell(s.sixes, "Zessen")}
-        ${statCell(s.ones, "Enen")}
-        ${statCell(s.jail, "In de cel")}
-        ${statCell(s.hitsTaken, "Geraakt")}
-        ${statCell(s.hitsGiven, "Uitgedeeld")}
-        ${statCell(s.handouts, "Rondjes gegeven")}
-        ${statCell(s.steps, "Vakjes gelopen")}
-        ${statCell(num(team.completedRounds), "Rondes")}
-        ${statCell(s.tasks, "Opdrachten")}
-        ${statCell(s.puEarned, "Power-ups")}
-        ${statCell(s.chance + s.fund, "Kaarten")}
-        ${statCell(s.skips + s.powerSkips, "Geskipt")}
-      </div>
-      <section class="aw-card">
-        <h3 class="aw-h3">Worpverdeling</h3>
-        ${totalFaces ? `<div class="aw-dist">${dist}</div>` : '<p class="aw-empty">Nog niets gegooid. De dobbelsteen staat te popelen.</p>'}
-      </section>
-      <p class="aw-foot">Tellers komen uit het spellogboek van dit toestel. Wie later aanschuift, mist het begin.</p>`;
   }
 
   function renderBadgesTab(c) {
