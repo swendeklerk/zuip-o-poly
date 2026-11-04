@@ -92,9 +92,11 @@ export const TASK_TIMERS = {
 };
 
 export const TEAM_RULES = [
-  "Gooi met 1 dobbelsteen. De app verplaatst jullie automatisch.",
-  "Voer de opdracht van het vak uit.",
-  "Bevestig zelf zodra de opdracht gedaan is.",
+  "Jullie spelen een kroegentocht door Nijmegen. Bijna elk vakje op het bord is een echte kroeg of plek in de stad, en die moeten jullie ook echt bezoeken.",
+  "Gooi met 1 dobbelsteen. De app verplaatst jullie automatisch over het bord.",
+  "Staat jullie pion op een kroeg of plek? Loop er met het hele team naartoe en voer daar de opdracht uit.",
+  "Is de opdracht gedaan? Bevestig het in de app. Speelt er een spelleider mee, stuur dan een foto of filmpje als bewijs en wacht op goedkeuring.",
+  "Kans, Algemeen Fonds en Wisselstations zijn kaarten en acties die je kunnen helpen, of juist dwarszitten. Power-ups bewaar je tot het juiste moment.",
   "Skippen mag altijd, maar kost 2 vakjes achteruit.",
   "Andere teams dwarszitten mag. Sterker nog: het moet.",
   "Beurten op? Dan zijn jullie gefinisht. De app bepaalt de winnaar."
