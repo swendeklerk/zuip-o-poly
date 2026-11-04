@@ -43,6 +43,7 @@ import {
   joinRoom,
   normalizeRoomCode,
   pickDock17Number,
+  rollTaskDice,
   resolveChoiceWithoutTarget,
   revealPopupCard,
   rollDice,
@@ -1199,7 +1200,8 @@ function renderTaskPanel(state, teamState) {
   const specialBlock = renderSpecialFlow(task);
   const specialIncomplete =
     (task.specialFlow === "dock17" && !task.dock17Revealed) ||
-    (task.specialFlow === "vanOuds" && !task.vanOudsComplete);
+    (task.specialFlow === "vanOuds" && !task.vanOudsComplete) ||
+    (task.specialFlow === "dice" && (task.diceRolls?.length ?? 0) < (task.diceCount ?? 1));
   const theme = getTaskTheme(task, teamState);
   const ready = !timerBusy && !specialIncomplete;
 
@@ -1245,7 +1247,42 @@ function renderTaskPanel(state, teamState) {
   `;
 }
 
+let diceAnimatedKey = null;
+
 function renderSpecialFlow(task) {
+  if (task.specialFlow === "dice") {
+    const rolls = task.diceRolls ?? [];
+    const count = task.diceCount === 2 ? 2 : 1;
+    const rolled = rolls.length >= count;
+    const total = rolls.reduce((sum, roll) => sum + roll, 0);
+    const minutes = task.diceMode === "minutes";
+    // De tol-animatie speelt één keer per worp, niet bij elke her-render van het scherm.
+    const key = `${task.title}|${rolls.join("-")}`;
+    const animate = rolled && diceAnimatedKey !== key;
+    if (rolled) {
+      diceAnimatedKey = key;
+    }
+    const faces = rolled ? rolls : Array.from({ length: count }, (_, index) => (index ? 2 : 4));
+    const dice = faces
+      .map((face) => renderDie(face, `${rolled ? "" : "is-idle"} ${animate ? "is-new" : ""}`))
+      .join("");
+    const unit = (n, one, many) => (n === 1 ? one : many);
+    const text = !rolled
+      ? minutes
+        ? "Staan de drankjes op tafel? Gooi dan samen de twee dobbelstenen. Het totaal is het aantal minuten dat jullie minimaal blijven zitten."
+        : "Gooi de dobbelsteen. Dat aantal is het aantal biertjes dat jullie samen drinken."
+      : minutes
+        ? `Blijf minimaal ${total} ${unit(total, "minuut", "minuten")} zitten. De tijd loopt.`
+        : `Drink samen ${total} ${unit(total, "biertje", "biertjes")}. Oneerlijk verdelen mag!`;
+    return `
+      <div class="special-flow dice-flow">
+        <div class="dice-flow-stage">${dice}</div>
+        ${rolled ? `<p class="dice-flow-total">${esc(rolls.join(" + "))}${count > 1 ? ` = <strong>${total}</strong>` : ""}</p>` : ""}
+        <p class="dice-flow-text">${esc(text)}</p>
+        ${rolled ? "" : `<button class="button gold big" data-action="task-dice-roll">${count > 1 ? "Gooi de dobbelstenen" : "Gooi de dobbelsteen"}</button>`}
+      </div>
+    `;
+  }
   if (task.specialFlow === "dock17") {
     // Om beurten: de eerste speler zonder getal is aan de beurt (zelfde regel als in de store).
     const turn = task.dock17Choices.find((choice) => !choice.number);
@@ -2472,6 +2509,12 @@ app.addEventListener("click", (event) => {
       break;
     case "dock17-pick":
       pickDock17Number(session.teamId, Number(target.dataset.number));
+      break;
+    case "task-dice-roll":
+      feedback.diceStart?.();
+      feedback.diceRattle?.();
+      rollTaskDice(session.teamId);
+      window.setTimeout(() => feedback.diceLand?.(), 700);
       break;
     case "vanouds-spin": {
       if (wheelSpin.active) {

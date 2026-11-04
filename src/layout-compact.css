@@ -66,3 +66,28 @@
 .dice-stage {
   min-height: 96px;
 }
+
+/* Dobbelstenen-opdracht: zolang er niet gegooid is, is de dobbelknop de vaste hoofdknop. */
+.dice-flow {
+  display: contents;
+}
+
+.dice-flow > * {
+  text-align: center;
+  align-self: center;
+}
+
+.task-panel:has([data-action="task-dice-roll"]) .task-actions > .button.primary.big {
+  position: static;
+  box-shadow: none;
+}
+
+.dice-flow > .button.gold.big {
+  position: sticky;
+  align-self: stretch;
+  bottom: var(--dock-clearance);
+  z-index: 6;
+  background: linear-gradient(180deg, #4a3d00, #342a00);
+  border-color: rgba(255, 214, 0, 0.6);
+  box-shadow: 0 0 0 8px var(--surface), 0 12px 24px rgba(0, 0, 0, 0.6);
+}
