@@ -73,7 +73,7 @@ export const GAME_CONFIG = {
   startTileId: 1,
   boardSize: 40,
   minTeams: 1,
-  maxTeams: 8,
+  maxTeams: 4,
   skipPenaltySteps: 2,
   jailWaitSeconds: timerSeconds(7 * 60),
   swapWaitSeconds: timerSeconds(3 * 60),

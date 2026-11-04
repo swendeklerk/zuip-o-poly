@@ -151,7 +151,7 @@ export const TILE_ASSIGNMENTS = {
     label: "Kroeg",
     location: "Sjors & Sjimmie",
     popup: "Sjors & Sjimmie is natuurlijk één van dé uitgaansgelegenheden van Nijmegen. Wat zouden we hier toch kunnen gaan doen..",
-    teamText: "Gooi één keer met de fysieke dobbelsteen uit je tasje, en drink dat aantal biertjes in totaal samen met je teamgenoten.",
+    teamText: "Gooi hieronder één keer de dobbelsteen in de app, en drink dat aantal biertjes in totaal samen met je teamgenoten.",
     summary: "X aantal bier drinken (dobbelsteen bepaald).",
     rules: "Eén keer gooien, dat aantal drinken. (Oneerlijk) verdelen over het team mag!",
     timerType: "bar"
@@ -217,7 +217,7 @@ export const TILE_ASSIGNMENTS = {
     label: "Kroeg",
     location: "Café Faber",
     popup: "Fabertje. Dat gaat natuurlijk in één adem met Koningsdag en Zomerfeesten. Laten we beide combineren, en een heeerlijk zomers-oranje drankje bestellen:",
-    teamText: "Een Aperolleke! Neem lekker plaats op het terras, bestel voor elk actief teamlid een Aperol Spritz en gooi vervolgens samen de fysieke dobbelsteen 2x. Het totaal aantal ogen is het aantal minuten dat jullie minimaal moet blijven genieten van het zonnetje! De tijd gaat in als de drankjes op tafel staan. Saluti!",
+    teamText: "Een Aperolleke! Neem lekker plaats op het terras, bestel voor elk actief teamlid een Aperol Spritz en gooi vervolgens hieronder in de app de twee dobbelstenen. Het totaal aantal ogen is het aantal minuten dat jullie minimaal moeten blijven genieten van het zonnetje! De tijd gaat in zodra jullie gooien, dus gooi pas als de drankjes op tafel staan. Saluti!",
     summary: "Drink een Aperol Spritz op het terras in de zon. Dobbel twee keer en blijf minimaal het aantal minuten zitten, wat gelijk staan aan het totaal aantal gegooide ogen.",
     rules: "Tijd gaat in als de drankjes geserveerd zijn. Maximaal 2x gooien.",
     timerType: "bar"

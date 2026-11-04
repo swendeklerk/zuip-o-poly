@@ -4,7 +4,8 @@ import {
   findTeamColor,
   GAME_CONFIG,
   TASK_TIMERS,
-  TEAM_COLORS
+  TEAM_COLORS,
+  TURBO
 } from "../data/gameConfig.js";
 import { CARD_DECKS, drawCard } from "../data/cards.js";
 import { CAFE_VAN_OUDS_WHEEL_OPTIONS, DOCK17_DRINKS } from "../data/tileAssignments.js";
@@ -381,14 +382,27 @@ function sanitizeTask(input) {
   setIfPresent(task, "oncePerTeam", (v) => Boolean(v));
   setIfPresent(task, "dock17Revealed", (v) => Boolean(v));
   setIfPresent(task, "vanOudsComplete", (v) => Boolean(v));
+  setIfPresent(task, "diceCount", (v) => cleanInt(v, 1, 2, 1));
+  setIfPresent(task, "diceMode", (v) => (v === "minutes" ? "minutes" : "beers"));
+  setIfPresent(task, "diceRolls", (v) =>
+    Array.isArray(v) ? v.slice(0, 2).map((roll) => cleanInt(roll, 1, 6, 1)) : []
+  );
   setIfPresent(task, "bonusPowerUp", (v) =>
     isPlainObject(v)
       ? { type: cleanWord(v.type, "unknown"), label: cleanText(v.label, 80, "Power-up") }
       : null
   );
 
-  if (task.specialFlow !== "dock17" && task.specialFlow !== "vanOuds") {
+  if (task.specialFlow !== "dock17" && task.specialFlow !== "vanOuds" && task.specialFlow !== "dice") {
     delete task.specialFlow;
+  }
+  if (task.specialFlow !== "dice") {
+    delete task.diceCount;
+    delete task.diceMode;
+    delete task.diceRolls;
+  } else {
+    task.diceCount = task.diceCount === 2 ? 2 : 1;
+    task.diceRolls = (task.diceRolls ?? []).slice(0, task.diceCount);
   }
   if (task.specialFlow === "dock17") {
     task.dock17Choices = sanitizeChoiceList(task.dock17Choices, (choice) => {
@@ -998,9 +1012,8 @@ export function createLeaderRoom({ modeId }) {
 }
 
 // Tweede (of herstelde) spelleider: spelcode + spelleiderscode.
-export function joinAsLeader({ roomCode, leaderCode, roomState = null }) {
+export function joinAsLeader({ roomCode, roomState = null }) {
   const code = normalizeRoomCode(roomCode);
-  const enteredCode = normalizeRoomCode(leaderCode);
 
   let state = null;
   const existingRaw = window.localStorage.getItem(storageKey(code));
@@ -1015,17 +1028,15 @@ export function joinAsLeader({ roomCode, leaderCode, roomState = null }) {
   if (!state) {
     return { ok: false, message: "Spelkamer niet gevonden." };
   }
-  if (!state.leaderMode || !state.leaderCodeHash) {
+  // Zondagversie: meedoen als spelleider kan met alleen de spelcode (geen aparte code).
+  if (!state.leaderMode) {
     return { ok: false, message: "Dit is geen spelkamer met spelleider." };
-  }
-  if (!enteredCode || leaderCodeHash(code, enteredCode) !== state.leaderCodeHash) {
-    return { ok: false, message: "Deze spelleiderscode klopt niet." };
   }
 
   window.localStorage.setItem(storageKey(code), JSON.stringify(state));
   window.localStorage.setItem(
     SESSION_KEY,
-    JSON.stringify({ roomCode: code, role: "leader", sessionId: createId("session"), leaderCode: enteredCode })
+    JSON.stringify({ roomCode: code, role: "leader", sessionId: createId("session") })
   );
   emit();
   return { ok: true, roomCode: code };
@@ -1090,7 +1101,7 @@ export function joinRoom({ roomCode, teamName, colorId, playerCount, playerNames
     return { ok: false, message: "Dit spel is al gestart. Joinen kan alleen in de lobby." };
   }
   if (Object.keys(state.teams).length >= GAME_CONFIG.maxTeams) {
-    return { ok: false, message: "De spelkamer zit vol." };
+    return { ok: false, message: `De spelkamer zit vol (maximaal ${GAME_CONFIG.maxTeams} teams).` };
   }
 
   const nameTaken = Object.values(state.teams).some(
@@ -1630,8 +1641,26 @@ function withVanOudsMeta(task, teamState, tileId) {
   };
 }
 
+// Café Faber (2 dobbelstenen = aantal minuten) en Sjors & Sjimmie (1 dobbelsteen = aantal biertjes):
+// de worp gebeurt in de app en staat meteen opgeslagen.
+function withDiceMeta(task, tileId) {
+  if (tileId !== 20 && tileId !== 14) {
+    return task;
+  }
+  const minutes = tileId === 20;
+  return {
+    ...task,
+    specialFlow: "dice",
+    diceCount: minutes ? 2 : 1,
+    diceMode: minutes ? "minutes" : "beers",
+    diceRolls: [],
+    // Faber: de timer start pas na de worp (het aantal ogen is het aantal minuten).
+    ...(minutes ? { timerSeconds: 0 } : {})
+  };
+}
+
 function withSpecialTaskMeta(task, teamState, tileId) {
-  return withVanOudsMeta(withDock17Meta(task, teamState, tileId), teamState, tileId);
+  return withDiceMeta(withVanOudsMeta(withDock17Meta(task, teamState, tileId), teamState, tileId), tileId);
 }
 
 function createStartBonusTask(actorName = "Een ander team") {
@@ -2041,6 +2070,9 @@ function confirmTaskReducer(teamId, withBonus) {
       return state;
     }
     if (task.specialFlow === "vanOuds" && !task.vanOudsComplete) {
+      return state;
+    }
+    if (task.specialFlow === "dice" && (task.diceRolls?.length ?? 0) < (task.diceCount ?? 1)) {
       return state;
     }
 
@@ -2926,6 +2958,36 @@ export function revealPopupCard(teamId) {
 // Dock 17 om beurten: de speler die aan de beurt is (eerste zonder getal) kiest
 // een nog vrij getal en ziet direct zijn drankje. De volgorde en het "geen
 // dubbele getallen" worden hier afgedwongen, niet alleen in de UI.
+// Gooit de dobbelstenen van Café Faber of Sjors & Sjimmie. De worp staat direct in de state:
+// opnieuw gooien na een refresh kan niet.
+export function rollTaskDice(teamId) {
+  return updateState((state) => {
+    const teamState = state.teams[teamId];
+    const task = teamState?.currentTask;
+    if (
+      !teamState ||
+      teamState.status !== TEAM_STATUS.TASK_ACTIVE ||
+      teamState.awaitingApproval ||
+      task?.specialFlow !== "dice" ||
+      (task.diceRolls?.length ?? 0) > 0
+    ) {
+      return state;
+    }
+    const count = task.diceCount === 2 ? 2 : 1;
+    const rolls = Array.from({ length: count }, () => Math.floor(Math.random() * 6) + 1);
+    const total = rolls.reduce((sum, roll) => sum + roll, 0);
+    const nextTask = { ...task, diceRolls: rolls };
+    if (task.diceMode === "minutes") {
+      // Minimaal zoveel minuten blijven zitten; in turbo snel (4 s per minuut).
+      nextTask.timerSeconds = TURBO ? Math.max(3, total * 4) : total * 60;
+      nextTask.startedAt = now();
+    }
+    const next = { ...state, teams: { ...state.teams, [teamId]: { ...teamState, currentTask: nextTask } } };
+    const worp = count > 1 ? `${rolls.join(" + ")} = ${total}` : `${total}`;
+    return logEvent(next, `${teamState.name} gooide ${worp} bij ${task.title ?? "de opdracht"}.`);
+  });
+}
+
 export function pickDock17Number(teamId, number) {
   return updateState((state) => {
     const teamState = state.teams[teamId];
