@@ -139,7 +139,9 @@ const app = document.getElementById("app");
 /* ------------------------------------------------------------------ */
 
 const ui = {
-  screen: "home", // home | create | join
+  screen: "intro", // intro | rules | home | create | join
+  rulesChecked: false,
+  rulesScrolled: false,
   createModeId: DEFAULT_MODE_ID,
   createColorId: TEAM_COLORS[0].id,
   createPlayerCount: 3,
@@ -644,7 +646,7 @@ function render() {
 // Nieuwe hero-banner met terugval naar het oude logo zolang het bestand nog
 // niet is toegevoegd.
 const HERO_IMG =
-  '<img class="brand-logo" src="./assets/zuipopoly-hero.jpg" alt="Zuip-O-Poly" ' +
+  '<img class="brand-logo" src="./assets/zuipopoly-logo-round.png" alt="Zuip-O-Poly" ' +
   'data-fallback-src="./assets/zuipopoly-logo-full.svg" />';
 
 function brandHeader(subtitle = "") {
@@ -727,7 +729,19 @@ function playerStepper(count, actionPrefix) {
 /* Entry: home / aanmaken / meedoen                                    */
 /* ------------------------------------------------------------------ */
 
+let lastEntryScreen = null;
+
 function renderEntry(notice = "") {
+  const entering = ui.screen !== lastEntryScreen;
+  lastEntryScreen = ui.screen;
+  if (ui.screen === "intro") {
+    renderIntro(entering);
+    return;
+  }
+  if (ui.screen === "rules") {
+    renderRules(entering);
+    return;
+  }
   if (ui.screen === "create") {
     renderCreate();
     return;
@@ -742,7 +756,7 @@ function renderEntry(notice = "") {
   }
 
   app.innerHTML = `
-    <div class="screen screen-home">
+    <div class="screen screen-home ${entering ? "screen-fade" : ""}">
       ${brandHeader()}
       ${notice ? `<p class="notice">${esc(notice)}</p>` : ""}
       <div class="home-actions">
@@ -755,17 +769,102 @@ function renderEntry(notice = "") {
           ⚡ Turbo-test: ${TURBO ? "AAN — timers ~15x korter" : "uit — timers in echte tijd"}
         </button>` : ""}
       </div>
-      <section class="panel home-rules">
-        <h2>Zo werkt het</h2>
-        <ul class="rules-list">
-          ${TEAM_RULES.map((rule) => `<li>${esc(rule)}</li>`).join("")}
-        </ul>
-      </section>
       <button class="button link" data-action="open-settings">🔊 Geluid &amp; trilling</button>
       <p class="home-city">Speelstad: <strong>Nijmegen</strong></p>
       ${renderDialog(null, null)}
     </div>
   `;
+}
+
+function renderIntro(entering) {
+  app.innerHTML = `
+    <div class="screen screen-intro ${entering ? "screen-fade" : ""}">
+      <button class="intro-logo" type="button" data-action="intro-play" aria-label="Start de intro">
+        ${HERO_IMG}
+      </button>
+      <p class="intro-hint">Tik op het logo om te beginnen</p>
+    </div>
+  `;
+}
+
+function playIntroVideo() {
+  if (document.querySelector(".intro-video-layer")) return;
+  const layer = document.createElement("div");
+  layer.className = "intro-video-layer";
+  layer.innerHTML = `
+    <video src="./assets/coming-soon.mp4" playsinline></video>
+    <button class="button ghost small intro-skip" type="button">Overslaan</button>
+  `;
+  const video = layer.querySelector("video");
+  video.play().then(() => video.pause()).catch(() => {});
+  window.setTimeout(() => {
+    if (!layer.isConnected) return;
+    video.currentTime = 0;
+    video.play().catch(() => {});
+    video.classList.add("is-shown");
+  }, 600);
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    layer.classList.add("is-leaving");
+    window.setTimeout(() => {
+      layer.remove();
+      ui.screen = "rules";
+      ui.rulesChecked = false;
+      ui.rulesScrolled = false;
+      render();
+    }, 500);
+  };
+  layer.querySelector("video").addEventListener("ended", finish);
+  layer.querySelector(".intro-skip").addEventListener("click", finish);
+  document.body.appendChild(layer);
+  window.requestAnimationFrame(() => layer.classList.add("is-visible"));
+}
+
+function renderRules(entering) {
+  app.innerHTML = `
+    <div class="screen screen-rules ${entering ? "screen-fade" : ""}">
+      ${brandHeader("Lees de regels")}
+      <section class="panel rules-confirm">
+        <h2>Zo werkt het</h2>
+        <div class="rules-scroll">
+          <ul class="rules-list">
+            ${TEAM_RULES.map((rule) => `<li>${esc(rule)}</li>`).join("")}
+          </ul>
+        </div>
+        <label class="rules-check">
+          <input type="checkbox" name="rulesCheck" ${ui.rulesChecked ? "checked" : ""} ${ui.rulesScrolled ? "" : "disabled"} />
+          <span>Ik heb de regels gelezen en begrijp ze.</span>
+        </label>
+        <button class="button primary big" data-action="rules-ok" ${ui.rulesChecked && ui.rulesScrolled ? "" : "disabled"}>Ik snap het</button>
+      </section>
+    </div>
+  `;
+  const scroller = app.querySelector(".rules-scroll");
+  const markScrolled = () => {
+    if (ui.rulesScrolled) return;
+    if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 8) {
+      ui.rulesScrolled = true;
+      updateRulesControls();
+    }
+  };
+  scroller.addEventListener("scroll", markScrolled);
+  if (scroller.scrollHeight <= scroller.clientHeight) {
+    ui.rulesScrolled = true;
+    updateRulesControls();
+  }
+}
+
+function updateRulesControls() {
+  const checkbox = document.querySelector('input[name="rulesCheck"]');
+  if (checkbox) {
+    checkbox.disabled = !ui.rulesScrolled;
+  }
+  const button = document.querySelector('[data-action="rules-ok"]');
+  if (button) {
+    button.disabled = !(ui.rulesChecked && ui.rulesScrolled);
+  }
 }
 
 function renderCreate() {
@@ -2327,6 +2426,13 @@ app.addEventListener("input", (event) => {
   }
 });
 
+app.addEventListener("change", (event) => {
+  if (event.target?.name === "rulesCheck") {
+    ui.rulesChecked = event.target.checked;
+    updateRulesControls();
+  }
+});
+
 /* ------------------------------------------------------------------ */
 /* Events                                                              */
 /* ------------------------------------------------------------------ */
@@ -2355,6 +2461,13 @@ app.addEventListener("click", (event) => {
   const session = getSession();
 
   switch (action) {
+    case "intro-play":
+      playIntroVideo();
+      break;
+    case "rules-ok":
+      ui.screen = "home";
+      render();
+      break;
     case "nav-home":
       ui.screen = "home";
       ui.createError = "";
