@@ -496,6 +496,13 @@ export function init(ctx) {
       }
       processEvents(state, stats);
       processTeams(state, stats);
+      if (state.phase === PHASE.ENDED && !stats.endAnnounced) {
+        stats.endAnnounced = true;
+        const team = ctx.myTeam();
+        const earnedIds = team && Array.isArray(stats.earned[team.id]) ? stats.earned[team.id] : [];
+        const list = BADGES.filter((b) => earnedIds.includes(b.id));
+        if (list.length) announce(list);
+      }
       evaluateBadges(state, stats);
       const json = JSON.stringify(stats);
       if (json !== room.lastJson) {
@@ -516,6 +523,7 @@ export function init(ctx) {
 
   function announce(list) {
     unseen = true;
+    if (currentState?.phase !== PHASE.ENDED) return;
     if (list.length > 3) {
       queue.push({ multi: list });
     } else {

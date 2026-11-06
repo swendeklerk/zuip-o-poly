@@ -1117,6 +1117,16 @@ function renderGame(state, teamState) {
   // Tijdens het lopen staat de pion op het huidige loopvak; anders op de eindpositie.
   const pawnPosition = walking ? walk.cells[walk.index] ?? teamState.lastMove?.from ?? teamState.position : teamState.position;
 
+  if (walking) {
+    app.innerHTML = `
+      <div class="screen screen-game screen-walk" style="--team-accent:${color.hex}">
+        ${renderBoard(state, teamState, pawnPosition)}
+        ${walk.reveal ? renderDiceReveal(teamState) : renderWalkingPanel(teamState)}
+      </div>
+    `;
+    return;
+  }
+
   app.innerHTML = `
     <div class="screen screen-game" style="--team-accent:${color.hex}">
       <header class="game-header">
@@ -1136,16 +1146,14 @@ function renderGame(state, teamState) {
 
       ${renderBoard(state, teamState, pawnPosition)}
 
-      ${walking ? (walk.reveal ? renderDiceReveal(teamState) : renderWalkingPanel(teamState)) : `
-        ${renderActionArea(state, teamState)}
-        ${renderPowerUps(state, teamState)}
-        ${state.isDemo ? renderDemoPanel(state, teamState) : ""}
-      `}
+      ${renderActionArea(state, teamState)}
+      ${renderPowerUps(state, teamState)}
+      ${state.isDemo ? renderDemoPanel(state, teamState) : ""}
       ${renderEventLog(state)}
 
       <button class="button link" data-action="ask-leave">Spelkamer verlaten</button>
-      ${walking ? "" : renderPopup(state, teamState)}
-      ${walking ? "" : renderDialog(state, teamState)}
+      ${renderPopup(state, teamState)}
+      ${renderDialog(state, teamState)}
     </div>
   `;
 }
@@ -1273,11 +1281,22 @@ function coasterIcon(key, accent, className = "coaster") {
   `;
 }
 
+const PLACE_TILE_TYPES = ["Straatvak", "Snackstation", "Cel / bezoekvak", "Parkeeropdracht / chillvak"];
+
+function mapsUrlForPlace(tile) {
+  if (!tile || !PLACE_TILE_TYPES.includes(tile.type)) {
+    return null;
+  }
+  const query = `${tile.name.replace(/\s+/g, " ").trim()} Nijmegen`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 function renderTaskPanel(state, teamState) {
   const task = teamState.currentTask;
   if (!task) {
     return "";
   }
+  const mapsUrl = mapsUrlForPlace(findTileById(teamState.position));
 
   if (task.pendingTileId) {
     return `
@@ -1328,6 +1347,7 @@ function renderTaskPanel(state, teamState) {
         <h2 class="task-title">${esc(task.title)}</h2>
       </div>
       <div class="task-body">${cardText(task.body)}</div>
+      ${mapsUrl ? `<a class="button ghost maps-link" href="${mapsUrl}" target="_blank" rel="noopener noreferrer">📍 Open in Maps</a>` : ""}
       ${leaderMode ? '<p class="proof-hint">Stuur een foto of filmpje naar jullie spelleider.</p>' : ""}
       ${task.rules ? `<details class="task-rules"><summary>Regels</summary><p>${nl2br(task.rules)}</p></details>` : ""}
       ${specialBlock}

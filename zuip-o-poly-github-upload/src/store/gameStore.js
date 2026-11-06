@@ -2014,10 +2014,9 @@ export function rollDice(teamId, forcedRoll = null) {
     }
 
     const isBonusRoll = Boolean(teamState.pendingBonusRoll);
-    // Een vaste worp is alleen toegestaan in de lokale testmodus; in een echte
-    // spelkamer kan niemand (bijv. via aangepaste knoppen in de DOM) de worp kiezen.
+    // De worp die op de dobbelsteen te zien is, is ook de worp die het team loopt.
     const roll =
-      state.isDemo && Number.isInteger(forcedRoll) && forcedRoll >= 1 && forcedRoll <= 6
+      Number.isInteger(forcedRoll) && forcedRoll >= 1 && forcedRoll <= 6
         ? forcedRoll
         : Math.floor(Math.random() * 6) + 1;
 

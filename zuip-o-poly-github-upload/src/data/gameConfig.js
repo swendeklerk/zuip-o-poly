@@ -43,9 +43,9 @@ export function findTeamColor(colorId) {
   return TEAM_COLORS.find((color) => color.id === colorId) ?? TEAM_COLORS[0];
 }
 
-// Testmodus (knop, turbo en testpaneel) is voor spelers verborgen. Zet dit op
-// true om de testfuncties lokaal te gebruiken.
-export const TESTMODUS_ZICHTBAAR = false;
+// Testmodus (knop, turbo en testpaneel) is voor spelers verborgen. Op de eigen
+// computer (localhost) staat hij altijd aan, zodat het bord te testen is.
+export const TESTMODUS_ZICHTBAAR = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 
 // Turbo-testmodus: alle timers ~15x korter om het hele spel snel te doorlopen.
 // Aan via ?turbo=1 (blijft onthouden), uit via ?turbo=0 of de knop op het startscherm.

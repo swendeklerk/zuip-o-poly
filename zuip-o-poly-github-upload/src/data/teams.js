@@ -2,45 +2,28 @@ export const TEAMS = [
   {
     id: "team_bruine_kroeg",
     name: "Bruine Kroeg",
-    players: ["Swen", "Jilke", "Bart", "Fleur"],
-    defaultActivePlayers: ["Swen", "Jilke", "Bart"],
+    players: ["Swen", "Jilke", "Bart", "Fleur", "Eva"],
     colorName: "Bruin",
     accent: "#8b5a2b",
     code: "BRUINEKROEG",
-    password: "0000",
     kroegraadId: "LARS"
   },
   {
     id: "team_zwarte_pint",
     name: "Zwarte Pint",
-    players: ["Lars", "Iris", "Sophie", "Jelle D."],
-    defaultActivePlayers: ["Lars", "Iris", "Sophie"],
+    players: ["Lars", "Iris", "Rick", "Sophie"],
     colorName: "Zwart",
     accent: "#f5f5f5",
     code: "ZWARTEPINT",
-    password: "0000",
-    kroegraadId: "SWEN"
-  },
-  {
-    id: "team_rode_neus",
-    name: "Geel Zucht",
-    players: ["Celeste", "Thijs", "Jelle H."],
-    defaultActivePlayers: ["Celeste", "Thijs", "Jelle H."],
-    colorName: "Geel",
-    accent: "#f4bf45",
-    code: "GEELZUCHT",
-    password: "0000",
     kroegraadId: "SWEN"
   },
   {
     id: "team_witte_batavus",
     name: "Witte Batavus",
-    players: ["Rick", "Eva", "Bryan"],
-    defaultActivePlayers: ["Rick", "Eva", "Bryan"],
+    players: ["Bryan", "Celeste", "Thijs", "Jelle"],
     colorName: "Wit",
     accent: "#e8edf3",
     code: "WITTEBATAVUS",
-    password: "0000",
     kroegraadId: "LARS"
   }
 ];
@@ -61,18 +44,11 @@ export const KROEGRAAD_USERS = [
 ];
 
 export function findTeamByCode(code) {
-  const normalizedCode = String(code ?? "").trim().toUpperCase();
-  return TEAMS.find((team) => team.code === normalizedCode);
+  return TEAMS.find((team) => team.code === code);
 }
 
 export function findTeamById(teamId) {
   return TEAMS.find((team) => team.id === teamId);
-}
-
-export function findTeamByLogin(teamId, password) {
-  return TEAMS.find(
-    (team) => team.id === teamId && team.password === String(password ?? "").trim()
-  );
 }
 
 export function findKroegraad(loginName, code) {
