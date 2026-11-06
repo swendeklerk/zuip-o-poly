@@ -47,7 +47,7 @@ export function getTileTheme(tile) {
 
   if (type.includes("snack") || type.includes("wissel")) {
     return {
-      color: "#f6f1e8",
+      color: "#FFFF00",
       className: "theme-station",
       label: type.includes("wissel") ? "Wissel" : "Snack"
     };

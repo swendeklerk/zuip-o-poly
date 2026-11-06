@@ -1,0 +1,723 @@
+/* Easter eggs & geheimen. Alles hangt aan #features-root (pointer-events: auto per kind). */
+
+#features-root [hidden] {
+  display: none !important;
+}
+
+/* Voorkom dat lang indrukken tekst selecteert of een iOS-callout opent. */
+.board-grid,
+.board-cell,
+.brand-logo,
+.die,
+.dice-stage,
+.rules-list li {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ------------------------------------------------------------------
+   Lagen met deeltjes en kleurwassen (nooit klikbaar)
+   ------------------------------------------------------------------ */
+
+#features-root > .egg-layer,
+#features-root > .egg-wash,
+#features-root > .egg-float,
+#features-root > .egg-clone {
+  pointer-events: none;
+}
+
+.egg-layer {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  z-index: 3;
+}
+
+.egg-p {
+  position: absolute;
+  display: block;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.egg-p.is-glyph {
+  width: auto;
+  height: auto;
+  background: none !important;
+  line-height: 1;
+}
+
+.egg-p-burst {
+  animation: eggBurst var(--d, 2000ms) cubic-bezier(0.2, 0.7, 0.4, 1) both;
+}
+
+.egg-p-rise {
+  animation: eggRise var(--d, 2000ms) ease-out both;
+}
+
+.egg-p-fall {
+  top: -8vh;
+  animation: eggFall var(--d, 3200ms) linear var(--delay, 0ms) both;
+}
+
+@keyframes eggBurst {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4) rotate(0); }
+  10% { opacity: 1; transform: translate(calc(var(--x) * 0.1), calc(var(--y) * 0.1)) scale(1) rotate(0); }
+  45% { opacity: 1; transform: translate(var(--x), var(--y)) scale(1) rotate(calc(var(--r) * 0.5)); }
+  100% { opacity: 0; transform: translate(calc(var(--x) * 1.25), calc(var(--y) + 60vh)) scale(0.9) rotate(var(--r)); }
+}
+
+@keyframes eggRise {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1.15) rotate(var(--r)); }
+}
+
+@keyframes eggFall {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0); }
+  8% { opacity: 1; }
+  100% { opacity: 0.9; transform: translate(var(--sway, 0px), 118vh) rotate(300deg); }
+}
+
+.egg-float {
+  position: fixed;
+  z-index: 4;
+  transform: translate(-50%, -100%);
+  font-family: var(--font-stamp, var(--font-display));
+  font-size: 1.5rem;
+  color: var(--gold, #ffd600);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  animation: eggFloat 1.2s ease-out both;
+}
+
+@keyframes eggFloat {
+  0% { opacity: 0; transform: translate(-50%, -60%) scale(0.6); }
+  20% { opacity: 1; transform: translate(-50%, -110%) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -260%) scale(1); }
+}
+
+/* Kleurwassen: een zachte glans over alles heen. */
+.egg-wash {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  animation: eggWash var(--wash-ms, 3000ms) ease-in-out both;
+}
+
+.egg-wash-gold { background: radial-gradient(circle at 50% 40%, rgba(255, 214, 0, 0.34), rgba(255, 122, 0, 0.12) 70%); }
+.egg-wash-ice { background: radial-gradient(circle at 50% 30%, rgba(0, 212, 255, 0.3), rgba(0, 212, 255, 0.06) 70%); }
+.egg-wash-night { background: rgba(2, 3, 14, 0.78); }
+.egg-wash-orange { background: linear-gradient(160deg, rgba(255, 122, 0, 0.42), rgba(255, 154, 61, 0.14)); }
+.egg-wash-rainbow {
+  background: linear-gradient(120deg, rgba(232, 0, 29, 0.3), rgba(255, 214, 0, 0.3), rgba(0, 212, 100, 0.3), rgba(0, 212, 255, 0.3), rgba(200, 0, 255, 0.3));
+}
+
+@keyframes eggWash {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  70% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+/* Gewobbel op elementen uit de app (blijft kort; #app mag opnieuw renderen). */
+.egg-wobble { animation: eggWobble 0.9s ease both !important; }
+.egg-spin-once { animation: eggSpinOnce 1.1s cubic-bezier(0.3, 1.2, 0.4, 1) both !important; }
+.egg-dice-spin { animation: eggDiceSpin 1.3s cubic-bezier(0.3, 1, 0.4, 1) both !important; }
+.egg-pawn-wobble { animation: eggPawnWobble 0.5s ease both !important; }
+
+@keyframes eggWobble {
+  0%, 100% { transform: rotate(0); }
+  15% { transform: rotate(-9deg) scale(1.06); }
+  35% { transform: rotate(8deg) scale(1.06); }
+  55% { transform: rotate(-5deg); }
+  75% { transform: rotate(3deg); }
+}
+
+@keyframes eggSpinOnce {
+  0% { transform: rotate(0) scale(1); }
+  50% { transform: rotate(180deg) scale(1.12); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes eggDiceSpin {
+  0% { transform: rotate(0) scale(1); }
+  45% { transform: rotate(540deg) scale(1.35); }
+  100% { transform: rotate(720deg) scale(1); }
+}
+
+@keyframes eggPawnWobble {
+  0%, 100% { transform: translate(-50%, -55%) rotate(0) scale(1); }
+  25% { transform: translate(-50%, -75%) rotate(-14deg) scale(1.2); }
+  60% { transform: translate(-50%, -50%) rotate(10deg) scale(0.9); }
+}
+
+.egg-clone {
+  position: fixed;
+  z-index: 3;
+  object-fit: contain;
+  animation: eggClone 1.4s cubic-bezier(0.3, 1.2, 0.4, 1) both;
+  filter: drop-shadow(0 0 18px rgba(255, 214, 0, 0.6));
+}
+
+@keyframes eggClone {
+  0% { opacity: 1; transform: rotate(0) scale(1); }
+  60% { opacity: 1; transform: rotate(540deg) scale(1.35); }
+  100% { opacity: 0; transform: rotate(720deg) scale(1.6); }
+}
+
+/* ------------------------------------------------------------------
+   Beer-mascotte met praatwolk
+   ------------------------------------------------------------------ */
+
+.egg-bear {
+  position: fixed;
+  z-index: 6;
+  left: 50%;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  width: min(94vw, 420px);
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  transform: translateX(-50%);
+  cursor: pointer;
+  animation: eggBearIn 420ms cubic-bezier(0.2, 1.2, 0.35, 1) both;
+}
+
+.egg-bear.is-leaving {
+  opacity: 0;
+  transform: translateX(-50%) translateY(24px);
+  transition: opacity 340ms ease, transform 340ms ease;
+}
+
+@keyframes eggBearIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(40px) scale(0.92); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
+.egg-bear-art {
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55));
+  animation: eggBearBob 1.4s ease-in-out infinite;
+}
+
+.egg-bear-art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes eggBearBob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-4px) rotate(2deg); }
+}
+
+.egg-bubble {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 16px 16px 16px 4px;
+  border: 1px solid var(--gold, #ffd600);
+  background: var(--surface2, #1a1a24);
+  color: var(--text, #f0eef4);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), 0 0 18px rgba(255, 214, 0, 0.15);
+}
+
+.egg-bubble strong {
+  display: block;
+  margin-bottom: 2px;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.1rem;
+  font-weight: 400;
+  letter-spacing: 0.8px;
+  color: var(--gold, #ffd600);
+}
+
+.egg-bubble p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+/* ------------------------------------------------------------------
+   Schermvullende overlays
+   ------------------------------------------------------------------ */
+
+.egg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  cursor: pointer;
+  animation: eggFade 260ms ease both;
+}
+
+.egg-overlay.is-leaving {
+  opacity: 0;
+  transition: opacity 340ms ease;
+}
+
+@keyframes eggFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.egg-overlay-fx {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.egg-overlay-card {
+  position: relative;
+  max-width: min(88vw, 380px);
+  text-align: center;
+  color: var(--text, #f0eef4);
+  animation: eggCardIn 520ms cubic-bezier(0.2, 1.3, 0.35, 1) both;
+}
+
+@keyframes eggCardIn {
+  from { opacity: 0; transform: scale(0.7) rotate(-3deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+.egg-overlay-icon {
+  font-size: 4.2rem;
+  line-height: 1.1;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+  animation: eggIconPop 1.6s ease-in-out infinite;
+}
+
+@keyframes eggIconPop {
+  0%, 100% { transform: scale(1) rotate(-4deg); }
+  50% { transform: scale(1.1) rotate(4deg); }
+}
+
+.egg-overlay-big {
+  margin-top: 4px;
+  font-family: var(--font-stamp, var(--font-display));
+  font-size: 2.6rem;
+  line-height: 1;
+  color: var(--gold, #ffd600);
+  letter-spacing: 1px;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.7);
+  transform: rotate(-3deg);
+}
+
+.egg-overlay-card h2 {
+  margin: 8px 0 6px;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 2rem;
+  font-weight: 400;
+  letter-spacing: 1.2px;
+  line-height: 1.05;
+}
+
+.egg-overlay-card p {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.egg-overlay-card small {
+  display: block;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* thema: goud */
+.egg-theme-gold .egg-overlay-fx {
+  background: radial-gradient(circle at 50% 40%, rgba(255, 214, 0, 0.38), rgba(8, 8, 9, 0.94) 72%);
+}
+
+/* thema: paars (geheime bar, professor) */
+.egg-theme-purple .egg-overlay-fx {
+  background: radial-gradient(circle at 50% 40%, rgba(200, 0, 255, 0.5), rgba(8, 8, 9, 0.95) 72%);
+}
+
+/* thema: ijs (live, bodem van het glas) */
+.egg-theme-ice .egg-overlay-fx {
+  background: radial-gradient(circle at 50% 30%, rgba(0, 212, 255, 0.42), rgba(8, 8, 9, 0.94) 72%);
+}
+
+/* thema: schuim */
+.egg-theme-foam .egg-overlay-fx {
+  background: #fff6d6;
+  animation: eggFoamDrop 620ms cubic-bezier(0.3, 1.1, 0.4, 1) both;
+}
+
+.egg-theme-foam .egg-overlay-fx::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 26px;
+  background:
+    radial-gradient(circle 16px at 16px 0, #fff6d6 98%, transparent) 0 0 / 32px 26px repeat-x;
+}
+
+.egg-theme-foam .egg-overlay-fx::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle 12px at 20% 30%, rgba(255, 255, 255, 0.9), transparent 70%),
+    radial-gradient(circle 18px at 70% 22%, rgba(255, 255, 255, 0.9), transparent 70%),
+    radial-gradient(circle 10px at 45% 62%, rgba(255, 255, 255, 0.9), transparent 70%),
+    radial-gradient(circle 16px at 82% 74%, rgba(255, 255, 255, 0.9), transparent 70%),
+    radial-gradient(circle 14px at 12% 82%, rgba(255, 255, 255, 0.9), transparent 70%);
+}
+
+.egg-theme-foam .egg-overlay-card {
+  color: #3a2a05;
+}
+
+.egg-theme-foam .egg-overlay-big {
+  color: #b87500;
+  text-shadow: none;
+}
+
+@keyframes eggFoamDrop {
+  from { transform: translateY(-110%); }
+  to { transform: translateY(0); }
+}
+
+/* thema: hemelstralen */
+.egg-theme-rays .egg-overlay-fx {
+  background: radial-gradient(circle at 50% 30%, rgba(255, 248, 205, 0.95), rgba(120, 170, 255, 0.55) 55%, rgba(8, 8, 9, 0.92) 100%);
+}
+
+.egg-theme-rays .egg-overlay-fx::before {
+  content: "";
+  position: absolute;
+  left: -50%;
+  top: -50%;
+  width: 200%;
+  height: 200%;
+  background: repeating-conic-gradient(from 0deg at 50% 38%, rgba(255, 255, 255, 0.3) 0 7deg, transparent 7deg 22deg);
+  animation: eggSpinSlow 18s linear infinite;
+}
+
+.egg-theme-rays .egg-overlay-card {
+  color: #0d1330;
+}
+
+.egg-theme-rays .egg-overlay-card small {
+  color: #0d1330;
+}
+
+@keyframes eggSpinSlow {
+  to { transform: rotate(360deg); }
+}
+
+/* thema: tralies */
+.egg-theme-bars .egg-overlay-fx {
+  background: rgba(8, 8, 9, 0.9);
+}
+
+.egg-theme-bars .egg-overlay-fx::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, #7d7d8c 0 12px, transparent 12px 58px);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.7);
+  animation: eggBarsDrop 520ms cubic-bezier(0.5, 1.4, 0.5, 1) both;
+}
+
+@keyframes eggBarsDrop {
+  from { transform: translateY(-105%); }
+  to { transform: translateY(0); }
+}
+
+/* thema: regenboog */
+.egg-theme-rainbow .egg-overlay-fx {
+  background: linear-gradient(120deg, #e8001d, #ff7a00, #ffd600, #00d464, #00d4ff, #c800ff, #e8001d);
+  background-size: 400% 100%;
+  opacity: 0.88;
+  animation: eggRainbow 4s linear infinite;
+}
+
+.egg-theme-rainbow .egg-overlay-card {
+  color: #fff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.55);
+}
+
+@keyframes eggRainbow {
+  to { background-position: 400% 0; }
+}
+
+/* ------------------------------------------------------------------
+   Toast "Geheim gevonden!"
+   ------------------------------------------------------------------ */
+
+.fx-toast.egg-toast {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-color: var(--gold, #ffd600);
+  background: linear-gradient(135deg, #251f05, var(--surface2, #1a1a24));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 22px rgba(255, 214, 0, 0.3);
+}
+
+.egg-toast-head {
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.25rem;
+  letter-spacing: 1.2px;
+  line-height: 1.1;
+  color: var(--gold, #ffd600);
+}
+
+.egg-toast-title {
+  font-size: 0.85rem;
+  color: var(--text, #f0eef4);
+}
+
+/* ------------------------------------------------------------------
+   Teller en overzicht
+   ------------------------------------------------------------------ */
+
+.egg-counter {
+  position: fixed;
+  z-index: 5;
+  left: max(8px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px 0 7px;
+  border-radius: 14px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  background: rgba(17, 17, 22, 0.78);
+  color: var(--text-muted, #8a8896);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  letter-spacing: 0.4px;
+  opacity: 0.55;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 200ms ease, border-color 200ms ease;
+}
+
+.egg-counter:hover,
+.egg-counter:focus-visible {
+  opacity: 1;
+  border-color: var(--gold, #ffd600);
+}
+
+.egg-counter-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.egg-counter.is-complete {
+  opacity: 0.95;
+  color: var(--gold, #ffd600);
+  border-color: var(--gold, #ffd600);
+}
+
+.egg-counter.is-bump {
+  animation: eggBump 700ms cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+@keyframes eggBump {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.45); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+.egg-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.72);
+  animation: eggFade 220ms ease both;
+}
+
+.egg-sheet-panel {
+  width: min(100%, 480px);
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: 16px 16px max(18px, env(safe-area-inset-bottom));
+  border-radius: 20px 20px 0 0;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  border-bottom: 0;
+  background: var(--surface2, #1a1a24);
+  color: var(--text, #f0eef4);
+  animation: eggSheetUp 320ms cubic-bezier(0.2, 1.1, 0.35, 1) both;
+}
+
+@keyframes eggSheetUp {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.egg-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.egg-sheet-head h2 {
+  margin: 0;
+  font-family: var(--font-display, "Bebas Neue", sans-serif);
+  font-size: 1.8rem;
+  font-weight: 400;
+  letter-spacing: 1.4px;
+  line-height: 1;
+  color: var(--gold, #ffd600);
+}
+
+.egg-sheet-head p {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--text-muted, #8a8896);
+}
+
+.egg-sheet-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  background: var(--surface3, #22222e);
+  color: var(--text, #f0eef4);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.egg-progress {
+  height: 6px;
+  margin: 12px 0;
+  border-radius: 3px;
+  background: var(--surface3, #22222e);
+  overflow: hidden;
+}
+
+.egg-progress span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--red, #e8001d), var(--gold, #ffd600));
+  transition: width 400ms ease;
+}
+
+.egg-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.egg-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.07));
+  background: var(--surface, #111116);
+}
+
+.egg-item.is-locked {
+  opacity: 0.6;
+}
+
+.egg-item.is-found {
+  border-color: rgba(255, 214, 0, 0.35);
+}
+
+.egg-item-icon {
+  flex: 0 0 34px;
+  font-size: 1.5rem;
+  text-align: center;
+}
+
+.egg-item strong {
+  display: block;
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.egg-item small {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  color: var(--text-muted, #8a8896);
+}
+
+.egg-sheet-foot {
+  margin: 14px 0 0;
+  font-family: var(--font-hand, cursive);
+  font-size: 1.1rem;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text-muted, #8a8896);
+}
+
+/* ------------------------------------------------------------------
+   Minder beweging
+   ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .egg-p,
+  .egg-float,
+  .egg-clone,
+  .egg-bear,
+  .egg-bear-art,
+  .egg-overlay,
+  .egg-overlay-card,
+  .egg-overlay-icon,
+  .egg-overlay-fx,
+  .egg-overlay-fx::before,
+  .egg-counter,
+  .egg-sheet,
+  .egg-sheet-panel,
+  .egg-wobble,
+  .egg-spin-once,
+  .egg-dice-spin,
+  .egg-pawn-wobble {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .egg-wash {
+    animation: none !important;
+    opacity: 0.6;
+  }
+
+  .egg-clone {
+    display: none;
+  }
+}
+
+/* De globale kop-kleur van de app is wit; lichte thema's moeten donkere koppen houden. */
+.egg-theme-foam .egg-overlay-card h2 {
+  color: #3a2a05;
+}
+
+.egg-theme-rays .egg-overlay-card h2 {
+  color: #0d1330;
+}
